@@ -27,6 +27,11 @@ export const THEMES: ThemeMeta[] = [
   { id: 'paper-light', name: 'Paper Light', isLight: true },
   { id: 'burgundy', name: 'Burgundy', isLight: false },
   { id: 'cobalt-slate', name: 'Cobalt Slate', isLight: false },
+  { id: 'oled-teal', name: 'OLED Teal', isLight: false },
+  { id: 'oled-amber', name: 'OLED Amber', isLight: false },
+  { id: 'oled-emerald', name: 'OLED Emerald', isLight: false },
+  { id: 'oled-violet', name: 'OLED Violet', isLight: false },
+  { id: 'oled-azure', name: 'OLED Azure', isLight: false },
 ];
 
 export function isValidTheme(id: string | null | undefined): id is string {

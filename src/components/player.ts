@@ -72,6 +72,9 @@ export class Player {
   // null for launches with no such view (search, reminders, resume-on-boot),
   // which keeps channel_up/channel_down on the full list exactly as before.
   private currentScope: ChannelScope | null = null;
+  // The live channels tuned last and before it, for the 0 key's recall.
+  private lastLive: { key: string; scope: ChannelScope | null } | null = null;
+  private previousLive: { key: string; scope: ChannelScope | null } | null = null;
   private catchupInfo: CatchupInfo | null = null;
   private vod: VodPlayback | null = null;
   private upNextSeconds = 0;
@@ -640,6 +643,7 @@ export class Player {
     this.currentIndex = channelIndex;
     if (channelIndex >= 0) this.currentIndexAnchor = channelIndex;
     if (scope !== undefined) this.currentScope = scope;
+    if (!catchup) this.trackLiveChannel(channelKey(channel));
     this.catchupInfo = catchup || null;
     this.liveSessionActive = !catchup;
     this.livePlaybackStatus = 'loading';
@@ -1551,6 +1555,51 @@ export class Player {
     return this.currentIndex;
   }
 
+  // The end of the live program on air, for the sleep timer's "End of program".
+  currentProgramEnd(): number | null {
+    const channel = this.currentChannel;
+    if (!channel || this.catchupInfo || this.vod || !this.playbackActive) return null;
+    const epgId = EpgService.findChannelId(channel);
+    const now = epgId ? EpgService.getNowPlaying(epgId) : null;
+    return now ? now.stop.getTime() : null;
+  }
+
+  // Ends playback where Back would, so nothing is left on a stopped player.
+  stopAndLeave(): void {
+    const back = this.vod ? this.vod.onBack : this.onBack;
+    this.stop();
+    back?.();
+  }
+
+  isActivelyPlaying(): boolean {
+    return this.playbackActive && !!this.videoEl && !this.videoEl.paused;
+  }
+
+  private trackLiveChannel(key: string): void {
+    if (this.lastLive && this.lastLive.key !== key) this.previousLive = this.lastLive;
+    this.lastLive = { key, scope: this.currentScope };
+  }
+
+  // Back to the live channel watched before this one. False when there is
+  // none, or it left the list since.
+  recallPreviousChannel(): boolean {
+    // From a catch-up replay (or a live channel other than the last one tuned),
+    // "previous" is the last live channel itself.
+    const onLastLive = !this.catchupInfo && !this.vod && !!this.currentChannel
+      && !!this.lastLive && channelKey(this.currentChannel) === this.lastLive.key;
+    const previous = onLastLive ? this.previousLive : this.lastLive;
+    if (!previous) return false;
+    const resolved = PlaylistService.resolveChannelKey(previous.key);
+    if (!resolved) {
+      log.debug('Previous channel gone', 'event=key.recall.rejected', 'reason=missing');
+      if (previous === this.previousLive) this.previousLive = null;
+      else this.lastLive = null;
+      return false;
+    }
+    this.play(resolved.channelIndex, undefined, previous.scope);
+    return true;
+  }
+
   getCurrentCatchupStart(): number | null {
     return this.catchupInfo ? this.catchupInfo.start * 1000 : null;
   }
@@ -1710,7 +1759,16 @@ export class Player {
         this.goToLive();
         break;
       case 'number':
-        if (event) this.playChannelNumber(event.number);
+        if (!event) break;
+        // Channel numbers start at 1, so a lone 0 is free to mean "previous channel".
+        if (event.number === 0) {
+          if (!this.recallPreviousChannel()) {
+            showToast(t('player.noPreviousChannel'));
+            this.showOSD();
+          }
+          break;
+        }
+        this.playChannelNumber(event.number);
         break;
     }
   }

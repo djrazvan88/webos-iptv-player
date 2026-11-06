@@ -413,7 +413,8 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 .reminder-prompt,
 .catchup-resume-prompt,
 .confirmation-prompt,
-.parental-pin-prompt {
+.parental-pin-prompt,
+.sleep-prompt {
   position: fixed;
   top: 0;
   right: 0;
@@ -428,14 +429,16 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 .reminder-prompt.hidden,
 .catchup-resume-prompt.hidden,
 .confirmation-prompt.hidden,
-.parental-pin-prompt.hidden {
+.parental-pin-prompt.hidden,
+.sleep-prompt.hidden {
   display: none;
 }
 
 .reminder-dialog,
 .catchup-resume-dialog,
 .confirmation-dialog,
-.parental-pin-dialog {
+.parental-pin-dialog,
+.sleep-dialog {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -446,7 +449,8 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 
 .reminder-message,
 .catchup-resume-message,
-.confirmation-message {
+.confirmation-message,
+.sleep-message {
   color: var(--text-primary);
   font-size: 30px;
   margin: 0 0 32px;
@@ -454,7 +458,8 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 
 .reminder-buttons,
 .catchup-resume-buttons,
-.confirmation-buttons {
+.confirmation-buttons,
+.sleep-buttons {
   display: flex;
   gap: 24px;
   justify-content: center;
@@ -462,7 +467,8 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 
 .reminder-btn,
 .catchup-resume-btn,
-.confirmation-btn {
+.confirmation-btn,
+.sleep-btn {
   min-width: 160px;
   padding: 14px 32px;
   font-size: 26px;
@@ -475,7 +481,8 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 
 .reminder-btn.focused,
 .catchup-resume-btn.focused,
-.confirmation-btn.focused {
+.confirmation-btn.focused,
+.sleep-btn.focused {
   border-color: var(--focus-ring);
   background: var(--accent-dim);
   color: #fff;
@@ -491,6 +498,23 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
   color: var(--danger);
 }
 
+/* Sleep timer warning: the moon names the feature, the countdown the urgency. */
+.sleep-icon {
+  display: block;
+  margin: 0 auto 16px;
+  width: 56px;
+  height: 56px;
+  color: var(--warning);
+}
+.sleep-icon svg { display: block; width: 56px; height: 56px; }
+.sleep-title {
+  margin: 0 0 12px;
+  font-size: 34px;
+}
+.sleep-message {
+  color: var(--text-secondary);
+}
+
 /* EPG reminder bell badge — dim on any future program (affordance), accent once set */
 .epg-bell-glyph {
   width: 22px;
@@ -502,4 +526,41 @@ button:not(:disabled):not(.account-avatar):not(.toggle-option):not(.source-toggl
 .epg-bell-glyph.set {
   color: var(--warning);
   filter: drop-shadow(0 0 4px rgb(var(--warning-rgb) / 0.5));
+}
+
+/* OLED screen saver: true black with a dim clock that hops every minute. */
+.screen-saver {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20000;
+  background: #000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
+  cursor: none;
+}
+.screen-saver.visible {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 1.2s ease, visibility 0s;
+}
+.screen-saver-clock {
+  position: absolute;
+  width: 360px;
+  text-align: center;
+  color: #6b6b6b;
+}
+.screen-saver-time {
+  font-size: 96px;
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: 2px;
+}
+.screen-saver-date {
+  margin-top: 8px;
+  font-size: 26px;
+  color: #4a4a4a;
 }

@@ -238,6 +238,9 @@ const M3U_SCREENS: Screen[] = [
     budget: 0,
     go: async (p) => {
       await openSettingsPane(p, 'appearance');
+      // Frame the dropdown, not however many theme rows sit above it: the
+      // swatch grid's sub-pixel columns are not what this screen measures.
+      await p.locator('#text-size').evaluate((el) => el.scrollIntoView(true));
       await p.locator('#text-size [data-dropdown-trigger]').click();
       await expect(p.locator('#text-size.open .dropdown-menu')).toBeVisible();
     },

@@ -48,6 +48,8 @@ export const NAV_HORIZONTAL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true">
 
 // Speed gauge (player menu playback-speed row).
 export const SPEED_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="m20.38 8.57-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z"/></svg>';
+// Crescent moon (player menu sleep timer row and its warning prompt).
+export const MOON_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M13.6 2.1A10 10 0 1 0 21.9 15 8.2 8.2 0 0 1 13.6 2.1z"/></svg>';
 // Beamed eighth notes (player menu audio-track row).
 export const AUDIO_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21 2v13a3.2 3.2 0 1 1-1.8-2.88V6.4l-8.4 1.9V17.5a3.2 3.2 0 1 1-1.8-2.88V4.6z"/></svg>';
 // Closed-caption card (player menu subtitles row).

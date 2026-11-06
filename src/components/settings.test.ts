@@ -42,6 +42,7 @@ const {
     liveReconnectAttempts: 3,
     numberEntryOsdTimeoutMs: 1200,
     playerOsdTimeoutMs: 5000,
+    screenSaverMinutes: 0,
     playlistRefreshHours: 6,
     epgRefreshHours: 6,
     xtreamCatalogRefreshHours: 6,
@@ -96,6 +97,7 @@ const {
       getLiveReconnectAttempts: vi.fn(() => state.liveReconnectAttempts),
       getNumberEntryOsdTimeoutMs: vi.fn(() => state.numberEntryOsdTimeoutMs),
       getPlayerOsdTimeoutMs: vi.fn(() => state.playerOsdTimeoutMs),
+      getScreenSaverMinutes: vi.fn(() => state.screenSaverMinutes),
       getPlaylistRefreshIntervalHours: vi.fn(() => state.playlistRefreshHours),
       getEpgRefreshIntervalHours: vi.fn(() => state.epgRefreshHours),
       getXtreamCatalogRefreshIntervalHours: vi.fn(
@@ -137,6 +139,9 @@ const {
       }),
       setPlayerOsdTimeoutMs: vi.fn((timeout: number) => {
         state.playerOsdTimeoutMs = timeout;
+      }),
+      setScreenSaverMinutes: vi.fn((minutes: number) => {
+        state.screenSaverMinutes = minutes;
       }),
       setPlaylistRefreshIntervalHours: vi.fn((hours: number) => {
         state.playlistRefreshHours = hours;
@@ -200,6 +205,7 @@ vi.mock('../services/storage-service', () => ({
   NUMBER_ENTRY_OSD_TIMEOUT_MS_OPTIONS: [1200, 1800, 2500, 3000, 3500],
   LIVE_RECONNECT_ATTEMPT_OPTIONS: [0, 1, 2, 3, 4, 5],
   PLAYER_OSD_TIMEOUT_MS_OPTIONS: [3000, 5000, 8000, 10000, 12000],
+  SCREEN_SAVER_MINUTE_OPTIONS: [0, 2, 5, 10, 15, 30],
   REFRESH_INTERVAL_HOUR_OPTIONS: [0, 1, 3, 6, 12, 24],
   XTREAM_CATALOG_REFRESH_HOUR_OPTIONS: [1, 3, 6, 12, 24],
   StorageService: storageMock,
@@ -628,6 +634,18 @@ describe('Settings.render', () => {
     expect(storageMock.setPlayerOsdTimeoutMs).toHaveBeenCalledWith(8000);
   });
 
+  it('offers the screen saver under Appearance, off by default, and persists it', () => {
+    settings.render();
+    const picker = container.querySelector<HTMLElement>('#settings-appearance #screen-saver')!;
+    expect(picker.getAttribute('data-value')).toBe('0');
+    expect(Array.from(picker.querySelectorAll<HTMLElement>('[data-dropdown-value]'))
+      .map(option => option.textContent?.trim()))
+      .toEqual(['Off', '2 min', '5 min', '10 min', '15 min', '30 min']);
+    click('#screen-saver [data-dropdown-value="10"]');
+    click('#save-settings');
+    expect(storageMock.setScreenSaverMinutes).toHaveBeenCalledWith(10);
+  });
+
   // Left moves within a row by measuring peers, and a collapsed control has no
   // vertical overlap with its row, so the overlap guard alone rejects it. With
   // the leading swatch collapsed the second one has no peer to its left, so
@@ -965,7 +983,7 @@ describe('Settings theme picker', () => {
   beforeEach(() => settings.render());
 
   it('renders a swatch per registered theme with the saved theme active', () => {
-    expect(container.querySelectorAll('.theme-swatch')).toHaveLength(15);
+    expect(container.querySelectorAll('.theme-swatch')).toHaveLength(20);
     expect(container.querySelector('.theme-swatch.active')!.getAttribute('data-theme-id')).toBe('midnight');
   });
 

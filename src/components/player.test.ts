@@ -2549,3 +2549,118 @@ describe('Player channel_up/channel_down view scope', () => {
     expect(player.getCurrentChannel()).toBe(OTHER); // full-list neighbor, not FAV_B
   });
 });
+
+describe('Player previous channel recall', () => {
+  const CH_A = { id: 'a', name: 'Alpha', logo: '', group: '', url: 'http://host/a', extras: null, playlistIds: [], catchupDays: 0 };
+  const CH_B = { id: 'b', name: 'Bravo', logo: '', group: '', url: 'http://host/b', extras: null, playlistIds: [], catchupDays: 0 };
+  const CH_C = { id: 'c', name: 'Charlie', logo: '', group: '', url: 'http://host/c', extras: null, playlistIds: [], catchupDays: 0 };
+  const LIST = [CH_A, CH_B, CH_C];
+
+  beforeEach(() => {
+    playlistMock.channels = LIST;
+    playlistMock.getByIndex.mockImplementation((i: number) => LIST[i] ?? null);
+    playlistMock.resolveChannelKey.mockImplementation((key: string) => {
+      const channelIndex = LIST.findIndex(ch => channelKey(ch as never) === key);
+      return channelIndex >= 0 ? { channel: LIST[channelIndex], channelIndex } : null;
+    });
+    vi.mocked(showToast).mockClear();
+  });
+  afterEach(() => {
+    playlistMock.channels = [];
+    playlistMock.resolveChannelKey.mockReset();
+    playlistMock.resolveChannelKey.mockReturnValue({ channel: CHANNEL, channelIndex: 0 });
+  });
+
+  it('a lone 0 returns to the channel watched before, and again toggles back', () => {
+    player.play(0);
+    player.play(2);
+
+    player.handleAction('number', { number: 0 });
+    expect(player.getCurrentChannel()).toBe(CH_A);
+
+    player.handleAction('number', { number: 0 });
+    expect(player.getCurrentChannel()).toBe(CH_C);
+  });
+
+  it('remembers the previous channel across a stop', () => {
+    player.play(1);
+    player.stop();
+    player.play(2);
+
+    expect(player.recallPreviousChannel()).toBe(true);
+    expect(player.getCurrentChannel()).toBe(CH_B);
+  });
+
+  it('keeps the launch scope of the recalled channel', () => {
+    const play = vi.spyOn(player, 'play');
+    player.play(0, undefined, { group: 'builtin:favorites' });
+    player.play(1, undefined, null);
+    play.mockClear();
+
+    player.handleAction('number', { number: 0 });
+    expect(play).toHaveBeenCalledWith(0, undefined, { group: 'builtin:favorites' });
+  });
+
+  it('says so when there is no previous channel, without switching', () => {
+    player.play(0);
+    const play = vi.spyOn(player, 'play');
+
+    player.handleAction('number', { number: 0 });
+
+    expect(play).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith('No previous channel');
+    expect(player.getCurrentChannel()).toBe(CH_A);
+  });
+
+  it('forgets a previous channel that left the list', () => {
+    player.play(0);
+    player.play(1);
+    playlistMock.resolveChannelKey.mockReturnValue(null);
+
+    expect(player.recallPreviousChannel()).toBe(false);
+    expect(player.recallPreviousChannel()).toBe(false);
+    expect(player.getCurrentChannel()).toBe(CH_B);
+  });
+
+  it('from a catch-up replay returns to the last live channel', () => {
+    player.play(0);
+    player.play(1);
+    player.play(2, { start: 1000, end: 2000 } as never);
+
+    player.handleAction('number', { number: 0 });
+    expect(player.getCurrentChannel()).toBe(CH_B);
+    expect(player.getCurrentCatchupStart()).toBeNull();
+  });
+
+  it('from a catch-up of the live channel returns to that channel live', () => {
+    player.play(0);
+    player.play(0, { start: 1000, end: 2000 } as never);
+
+    expect(player.recallPreviousChannel()).toBe(true);
+    expect(player.getCurrentChannel()).toBe(CH_A);
+    expect(player.getCurrentCatchupStart()).toBeNull();
+  });
+
+  it('stopAndLeave ends live playback where Back would', () => {
+    const onBack = (player as unknown as { onBack: () => void }).onBack;
+    const spy = vi.fn();
+    (player as unknown as { onBack: () => void }).onBack = spy;
+    try {
+      player.play(0);
+      player.stopAndLeave();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(player.isActivelyPlaying()).toBe(false);
+    } finally {
+      (player as unknown as { onBack: () => void }).onBack = onBack;
+    }
+  });
+
+  it('does not count a catch-up replay as the channel to return to', () => {
+    player.play(0);
+    player.play(1, { start: 1000, end: 2000 } as never);
+    player.play(2);
+
+    player.handleAction('number', { number: 0 });
+    expect(player.getCurrentChannel()).toBe(CH_A);
+  });
+});

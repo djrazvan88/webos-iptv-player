@@ -7,6 +7,7 @@ import {
   NUMBER_ENTRY_OSD_TIMEOUT_MS_OPTIONS,
   LIVE_RECONNECT_ATTEMPT_OPTIONS,
   PLAYER_OSD_TIMEOUT_MS_OPTIONS,
+  SCREEN_SAVER_MINUTE_OPTIONS,
   REFRESH_INTERVAL_HOUR_OPTIONS,
   StorageService,
   XTREAM_CATALOG_REFRESH_HOUR_OPTIONS,
@@ -747,6 +748,7 @@ export class Settings {
     const liveReconnectAttempts = StorageService.getLiveReconnectAttempts();
     const numberEntryOsdTimeoutMs = StorageService.getNumberEntryOsdTimeoutMs();
     const playerOsdTimeoutMs = StorageService.getPlayerOsdTimeoutMs();
+    const screenSaverMinutes = StorageService.getScreenSaverMinutes();
     const animationMode = StorageService.getAnimationMode();
     const playlistRefreshHours = StorageService.getPlaylistRefreshIntervalHours();
     const epgRefreshHours = StorageService.getEpgRefreshIntervalHours();
@@ -967,6 +969,15 @@ export class Settings {
                 <div class="settings-item">
                   <div class="settings-item-title">${t('settings.textSize')}</div>
                   ${dropdown('text-size', textSizes, textSize)}
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-title">${t('settings.screenSaver')}</div>
+                  ${dropdown('screen-saver', SCREEN_SAVER_MINUTE_OPTIONS.map(minutes => ({
+                    value: String(minutes),
+                    label: minutes === 0 ? t('common.off')
+                      : t('catalog.minutes', { count: minutes }),
+                  })), String(screenSaverMinutes))}
+                  <div class="settings-item-hint">${t('settings.screenSaverHint')}</div>
                 </div>
               </div>
             </div>
@@ -2917,6 +2928,13 @@ export class Settings {
       ($('#player-osd-timeout', this.container) as HTMLElement | null)?.dataset.value,
     );
     StorageService.setPlayerOsdTimeoutMs(playerOsdTimeoutMs);
+
+    const screenSaverMinutes = Number(
+      ($('#screen-saver', this.container) as HTMLElement | null)?.dataset.value,
+    );
+    if (SCREEN_SAVER_MINUTE_OPTIONS.includes(screenSaverMinutes)) {
+      StorageService.setScreenSaverMinutes(screenSaverMinutes);
+    }
 
     const animationMode = $('#animation-mode .toggle-option.active', this.container)
       ?.dataset.value as AnimationMode | undefined;

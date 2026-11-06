@@ -24,7 +24,10 @@ import { LivePreview } from './components/live-preview';
 import { EpgGrid } from './components/epg-grid';
 import { Settings, type SaveAction } from './components/settings';
 import { Sidebar } from './components/sidebar';
-import { PlayerMenu } from './components/player-menu';
+import { PlayerMenu, sleepRemainingLabel } from './components/player-menu';
+import { SleepPrompt } from './components/sleep-prompt';
+import { ScreenSaver } from './components/screen-saver';
+import { SleepTimer, SLEEP_TIMER_EXTEND_MINUTES, type SleepTimerChoice } from './services/sleep-timer';
 import { TabBar, type Section, sectionForView } from './components/tab-bar';
 import { Movies } from './components/movies';
 import { Series } from './components/series';
@@ -64,6 +67,7 @@ import type {
 import { getLocale, initLocale, resolveLocale, setLocale, t, tp } from './i18n';
 
 const log = createLogger('App');
+const SLEEP_POWER_OFF_TIMEOUT_MS = 5000;
 
 type ViewName = 'channels' | 'player' | 'epg' | 'settings' | 'parental-controls' | 'reminders'
   | 'loading' | 'movies' | 'series' | 'search';
@@ -86,6 +90,17 @@ class App {
   private sidebar!: Sidebar;
   private menu!: PlayerMenu;
   private reminderPrompt = new ReminderPrompt();
+  private sleepPrompt = new SleepPrompt();
+  private screenSaver = new ScreenSaver({
+    timeoutMs: () => StorageService.getScreenSaverMinutes() * 60_000,
+    // The live preview counts too: its audio means someone is there.
+    isWatching: () => this.player.isActivelyPlaying(),
+  });
+  private sleepTimer = new SleepTimer({
+    onWarn: () => this.warnSleep(),
+    onExpire: () => { void this.sleepNow('timer'); },
+    onChange: () => this.menu?.refresh(),
+  });
   private reminderManager!: ReminderManager;
   private reminderManagerOrigin: 'settings' | 'epg' = 'settings';
   private tabBar!: TabBar;
@@ -239,6 +254,7 @@ class App {
       this.onParentalLocksChanged(concealmentChanged));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
+        this.cancelSleepForBackground();
         this.parentalPinPrompt.dismiss();
         // Whoever comes back must not find the manager open without a PIN.
         if (this.isCurrentView('parental-controls')) this.leaveParentalControls();
@@ -270,6 +286,17 @@ class App {
       (rate) => this.player.setPlaybackRate(rate),
       () => this.player.subtitleSearchAvailable(),
       () => this.player.openSubtitleSearch(),
+      {
+        state: () => {
+          const state = this.sleepTimer.state();
+          return {
+            choice: state.choice,
+            remainingMs: state.remainingMs,
+            programEnd: this.programEndForSleep() !== null,
+          };
+        },
+        select: (choice) => this.setSleepTimer(choice),
+      },
     );
 
     this.movies = new Movies(this.views.movies, {
@@ -377,6 +404,7 @@ class App {
     this.tabBar.init();
 
     KeyHandler.init();
+    this.screenSaver.init();
     KeyHandler.setHandler((action, event) => {
       this.handleKey(action, event);
       // Any key ends a pointer entry's wait, even one that acted elsewhere.
@@ -1516,6 +1544,12 @@ class App {
     const due = ReminderService.dueNow();
     const r = due[0];
     if (!r) return;
+    this.screenSaver.wake();
+    // A reminder over the last-minute warning: the viewer will act on it.
+    if (this.sleepPrompt.visible) {
+      this.sleepPrompt.hide();
+      this.extendSleep();
+    }
     const concealed = ReminderService.concealedChannel(r.channelKey);
     this.reminderPrompt.show(
       truncate(r.title, CONFIG.REMINDER.TITLE_MAX),
@@ -1573,6 +1607,8 @@ class App {
   private handleKey(action: Action, event?: NumberEvent): void {
     const currentView = this.viewStack[this.viewStack.length - 1];
     const owner = Focus.owner();
+
+    if (this.screenSaver.poke()) return;
 
     log.debug('Key routed', 'event=key.action', `action=${action}`,
       `view=${currentView}`, `owner=${owner?.id ?? 'none'}`,
@@ -1823,6 +1859,108 @@ class App {
         this.player.showOSD();
       }
     });
+  }
+
+  private setSleepTimer(choice: SleepTimerChoice | null): void {
+    if (choice === null) {
+      this.sleepTimer.cancel();
+      showToast(t('sleep.off'));
+      return;
+    }
+    if (choice === 'program') {
+      const end = this.programEndForSleep();
+      if (end === null || !this.sleepTimer.startUntil(end)) {
+        showToast(t('sleep.programUnknown'));
+        return;
+      }
+    } else {
+      this.sleepTimer.start(choice);
+    }
+    showToast(t('sleep.set', { time: sleepRemainingLabel(this.sleepTimer.remainingMs()) }));
+  }
+
+  // Under two minutes left, the warning would follow the confirmation at once.
+  private programEndForSleep(): number | null {
+    const end = this.player.currentProgramEnd();
+    return end !== null && end - Date.now() > 2 * 60_000 ? end : null;
+  }
+
+  // Leaving the app (Home, another input) ends the timer: it must never turn
+  // the TV off under something else.
+  private cancelSleepForBackground(): void {
+    if (!this.sleepTimer.state().active && !this.sleepPrompt.visible) return;
+    log.info('Sleep timer canceled in the background', 'event=sleep.canceled', 'reason=background');
+    this.sleepPrompt.hide();
+    this.sleepTimer.cancel();
+  }
+
+  private extendSleep(): void {
+    this.sleepTimer.extend(SLEEP_TIMER_EXTEND_MINUTES);
+    showToast(t('sleep.set', { time: sleepRemainingLabel(this.sleepTimer.remainingMs()) }));
+  }
+
+  private warnSleep(): void {
+    this.screenSaver.wake();
+    // Someone is answering a PIN or reminder prompt right now: that is
+    // activity, and a second modal would fight it for the keys.
+    if (this.parentalPinPrompt.visible || this.reminderPrompt.visible) {
+      this.extendSleep();
+      return;
+    }
+    this.sleepPrompt.show({
+      remainingMs: () => this.sleepTimer.remainingMs(),
+      onExtend: () => this.extendSleep(),
+      onSleepNow: () => {
+        this.sleepTimer.cancel();
+        void this.sleepNow('prompt');
+      },
+    });
+  }
+
+  // Stops playback (saving resume points), then turns the TV off; where the
+  // platform refuses that, closing the app still ends the stream.
+  private async sleepNow(trigger: 'timer' | 'prompt'): Promise<void> {
+    log.info('Sleep timer ended playback', 'event=sleep.expired', `trigger=${trigger}`);
+    this.sleepPrompt.hide();
+    this.sidebar.hide();
+    this.menu.hide();
+    if (this.viewStack[this.viewStack.length - 1] === 'player') this.player.stopAndLeave();
+    else this.player.stop();
+    // Nobody is there to retry a failed save: power off regardless.
+    if (!await this.flushUserData('exit')) {
+      log.warn('Sleep timer saved no user data', 'event=sleep.flush.failed');
+    }
+    if (!isLunaAvailable()) {
+      this.closeForSleep('no_luna');
+      return;
+    }
+    let settled = false;
+    const fallback = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      this.closeForSleep('timeout');
+    }, SLEEP_POWER_OFF_TIMEOUT_MS);
+    lunaRequest('luna://com.webos.service.tvpower/power', {
+      method: 'turnOffTV',
+      parameters: { reason: 'remoteKey' },
+      onSuccess: () => {
+        settled = true;
+        clearTimeout(fallback);
+      },
+      onFailure: (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallback);
+        this.closeForSleep(`error_${String(response.errorCode ?? 'unknown')}`);
+      },
+    });
+  }
+
+  private closeForSleep(reason: string): void {
+    log.warn('TV power off unavailable, closing the app', 'event=sleep.power_off.failed',
+      `reason=${reason}`);
+    this.stopBundledService();
+    window.close();
   }
 
   private onMenuAction(action: Action): void {

@@ -98,6 +98,13 @@
 - **Animation mode** — Essential turns off costly motion on older TVs, Reduced keeps visual effects but scrolls instantly, and Full smooth-scrolls single navigation steps
 - **Multilingual interface** — available in English, Deutsch, Español, Français, Italiano, Polski, Português (Brasil), Русский, Türkçe, Українська, and 简体中文; follows the TV language by default or can be selected explicitly in Settings
 
+**Comfort & OLED care**
+
+- **Sleep timer** — from the player menu, stop after 15–120 minutes or at the end of the program on air; a one-minute warning offers +30 min or Turn off now, then playback stops, resume points are saved, and the TV powers off (where the platform refuses, the app closes)
+- **Previous channel** — press **0** on its own while watching to jump back to the last live channel, and again to return
+- **OLED themes** — five true-black themes (Teal, Amber, Emerald, Violet, Azure) that switch OLED pixels off behind the interface
+- **Screen saver** — after 2–30 idle minutes on a still screen (lists, guide, a paused frame), the screen goes black with a dim clock that moves every minute; playing video never triggers it, and the waking key does nothing else
+
 **Development**
 
 - **Desktop preview** — browser-based playback via HLS.js, mpegts.js, and Shaka

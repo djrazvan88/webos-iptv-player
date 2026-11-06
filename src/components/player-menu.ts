@@ -2,7 +2,7 @@ import type { Action, AudioTrackOption, Channel, SubtitleTrackOption } from '../
 import { CONFIG } from '../config';
 import { $, html, inShownView, onceTransitionEnd, raw, withInstantScroll } from '../utils/dom';
 import { morph } from '../utils/morph';
-import { AUDIO_ICON, SPEED_ICON, SUBTITLE_ICON } from './icons';
+import { AUDIO_ICON, MOON_ICON, SPEED_ICON, SUBTITLE_ICON } from './icons';
 import { t } from '../i18n';
 import {
   PLAYBACK_RATES,
@@ -10,6 +10,18 @@ import {
   type PlaybackRateState,
 } from '../services/playback-rate';
 import { Focus, type FocusScope, type Via } from '../navigation/focus-scope';
+import { SLEEP_TIMER_MINUTES, type SleepTimerChoice } from '../services/sleep-timer';
+
+export interface SleepMenuHooks {
+  // The active choice (null when off), the time left, and whether the program
+  // on air has a known end to stop at.
+  state: () => { choice: SleepTimerChoice | null; remainingMs: number; programEnd: boolean };
+  select: (choice: SleepTimerChoice | null) => void;
+}
+
+export function sleepRemainingLabel(remainingMs: number): string {
+  return t('catalog.minutes', { count: Math.max(1, Math.ceil(remainingMs / 60_000)) });
+}
 
 const AUTO_HIDE_MS = 5000;
 
@@ -35,6 +47,8 @@ const OPEN_OFFSET = '__subs_offset__';
 const OPEN_SEARCH = '__subs_search__';
 const OPEN_SPEED = '__speed_open__';
 const PICK_SPEED = '__speed_rate__';
+const OPEN_SLEEP = '__sleep_open__';
+const PICK_SLEEP = '__sleep_choice__';
 
 /**
  * The action overlay shown on the right edge during playback. Owns its own
@@ -65,7 +79,8 @@ export class PlayerMenu {
   private isVisible = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private focusIdx = 0;
-  private mode: 'main' | 'audio' | 'subtitles' | 'speed' = 'main';
+  private mode: 'main' | 'audio' | 'subtitles' | 'speed' | 'sleep' = 'main';
+  private sleep: SleepMenuHooks | null;
   private cancelHide: (() => void) | null = null;
   // Registered on the first show; focusIdx stays the model, the scope paints it.
   private scope: FocusScope | null = null;
@@ -84,7 +99,9 @@ export class PlayerMenu {
     selectPlaybackRate: (rate: PlaybackRate) => Promise<boolean>,
     subtitleSearchAvailable: () => boolean,
     openSubtitleSearch: () => void,
+    sleep: SleepMenuHooks | null = null,
   ) {
+    this.sleep = sleep;
     this.getCurrentChannel = getCurrentChannel;
     this.onAction = onAction;
     this.getAudioTracks = getAudioTracks;
@@ -286,6 +303,16 @@ export class PlayerMenu {
       this.openSubtitles();
     } else if (action === OPEN_SPEED) {
       this.openSpeed();
+    } else if (action === OPEN_SLEEP) {
+      this.openSleep();
+    } else if (action === PICK_SLEEP) {
+      const value = item.dataset.sleepChoice;
+      const choice: SleepTimerChoice | null = value === 'off' ? null
+        : value === 'program' ? 'program' : Number(value);
+      if (choice === null || choice === 'program' || SLEEP_TIMER_MINUTES.indexOf(choice) !== -1) {
+        this.hide();
+        this.sleep?.select(choice);
+      }
     } else if (action === BACK) {
       this.openMain();
     } else if (action === PICK_AUDIO) {
@@ -343,6 +370,26 @@ export class PlayerMenu {
     this.resetTimer();
   }
 
+  private openSleep(): void {
+    if (!this.sleep) return;
+    this.mode = 'sleep';
+    const rows = this.sleepRows();
+    const active = rows.indexOf(this.sleepRowValue(this.sleep.state().choice));
+    this.render();
+    this.openAt(active >= 0 ? active + 1 : 1);
+    this.resetTimer();
+  }
+
+  private sleepRows(): string[] {
+    const rows = ['off', ...SLEEP_TIMER_MINUTES.map(String)];
+    if (this.sleep?.state().programEnd) rows.push('program');
+    return rows;
+  }
+
+  private sleepRowValue(choice: SleepTimerChoice | null): string {
+    return choice === null ? 'off' : String(choice);
+  }
+
   private openMain(): void {
     this.mode = 'main';
     this.render();
@@ -354,6 +401,7 @@ export class PlayerMenu {
     if (this.mode === 'audio') this.renderAudio();
     else if (this.mode === 'subtitles') this.renderSubtitles();
     else if (this.mode === 'speed') this.renderSpeed();
+    else if (this.mode === 'sleep') this.renderSleep();
     else this.renderMain();
   }
 
@@ -369,6 +417,7 @@ export class PlayerMenu {
     const subtitles = this.getSubtitleTracks();
     const activeSub = subtitles.find(t => t.active);
     const speed = this.getPlaybackRateState();
+    const sleep = this.sleep?.state() ?? null;
 
     const audioShown = tracks.length >= 2;
 
@@ -413,6 +462,45 @@ export class PlayerMenu {
             <span class="menu-item-value">${activeSub?.label || t('common.off')}</span>
           </div>
         ` : ''}
+        ${sleep ? html`
+          <div class="menu-item"
+               data-key="${OPEN_SLEEP}"
+               data-focusable data-menu-action="${OPEN_SLEEP}">
+            <span class="menu-icon sleep">${raw(MOON_ICON)}</span>
+            <span class="menu-item-label">${t('player.sleepTimer')}</span>
+            <span class="menu-item-value">${sleep.choice === null
+              ? t('common.off') : sleepRemainingLabel(sleep.remainingMs)}</span>
+          </div>
+        ` : ''}
+      </div>
+    `);
+  }
+
+  private renderSleep(): void {
+    const el = this.el;
+    if (!el || !this.sleep) return;
+    const active = this.sleepRowValue(this.sleep.state().choice);
+
+    morph(el, html`
+      <div class="menu-header">
+        <h2>${t('player.sleepTimer')}</h2>
+      </div>
+      <div class="menu-items">
+        <div class="menu-item" data-key="${BACK}"
+             data-focusable data-menu-action="${BACK}">
+          <span class="menu-check menu-back">‹</span>
+          <span class="menu-item-label">${t('common.back')}</span>
+        </div>
+        ${this.sleepRows().map((value) => html`
+          <div class="menu-item" data-key="sleep:${value}"
+               data-focusable data-menu-action="${PICK_SLEEP}"
+               data-sleep-choice="${value}">
+            <span class="menu-check">${value === active ? '✓' : ''}</span>
+            <span class="menu-track-label">${value === 'off' ? t('common.off')
+              : value === 'program' ? t('player.sleepTimerProgramEnd')
+                : t('catalog.minutes', { count: Number(value) })}</span>
+          </div>
+        `)}
       </div>
     `);
   }

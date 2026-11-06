@@ -74,6 +74,15 @@ describe('StorageService', () => {
       .toBe(CONFIG.PLAYER.DEFAULT_PLAYER_OSD_TIMEOUT_MS);
   });
 
+  it('validates and persists the screen saver delay, off by default', () => {
+    expect(StorageService.getScreenSaverMinutes()).toBe(0);
+    StorageService.setScreenSaverMinutes(10);
+    expect(StorageService.getScreenSaverMinutes()).toBe(10);
+    expect(() => StorageService.setScreenSaverMinutes(7)).toThrow(RangeError);
+    StorageService.set('screen_saver_minutes', '5');
+    expect(StorageService.getScreenSaverMinutes()).toBe(0);
+  });
+
   it('validates and persists playlist and guide refresh intervals', () => {
     expect(StorageService.getPlaylistRefreshIntervalHours()).toBe(6);
     expect(StorageService.getEpgRefreshIntervalHours()).toBe(6);

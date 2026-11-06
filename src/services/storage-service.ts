@@ -36,6 +36,8 @@ const PREFIX = CONFIG.STORAGE_PREFIX;
 export const LIVE_RECONNECT_ATTEMPT_OPTIONS: readonly number[] = [0, 1, 2, 3, 4, 5];
 export const NUMBER_ENTRY_OSD_TIMEOUT_MS_OPTIONS: readonly number[] = [1200, 1800, 2500, 3000, 3500];
 export const PLAYER_OSD_TIMEOUT_MS_OPTIONS: readonly number[] = [3000, 5000, 8000, 10000, 12000];
+// Idle minutes before the OLED screen saver; 0 = off.
+export const SCREEN_SAVER_MINUTE_OPTIONS: readonly number[] = [0, 2, 5, 10, 15, 30];
 export const REFRESH_INTERVAL_HOUR_OPTIONS: readonly number[] = [0, 1, 3, 6, 12, 24];
 export const XTREAM_CATALOG_REFRESH_HOUR_OPTIONS: readonly number[] = [1, 3, 6, 12, 24];
 const HOUR_MS = 60 * 60 * 1000;
@@ -749,6 +751,17 @@ export const StorageService = {
       throw new RangeError(`Invalid player OSD timeout: ${String(timeout)}`);
     }
     set('player_osd_timeout_ms', timeout);
+  },
+
+  getScreenSaverMinutes(): number {
+    const minutes = get<unknown>('screen_saver_minutes', 0);
+    return typeof minutes === 'number' && SCREEN_SAVER_MINUTE_OPTIONS.includes(minutes) ? minutes : 0;
+  },
+  setScreenSaverMinutes(minutes: number): void {
+    if (!SCREEN_SAVER_MINUTE_OPTIONS.includes(minutes)) {
+      throw new RangeError(`Invalid screen saver minutes: ${String(minutes)}`);
+    }
+    set('screen_saver_minutes', minutes);
   },
 
   getPlaylistRefreshIntervalHours(): number {

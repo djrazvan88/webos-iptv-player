@@ -677,3 +677,78 @@ describe('PlayerMenu', () => {
     });
   });
 });
+
+describe('PlayerMenu sleep timer', () => {
+  let sleepState: { choice: number | 'program' | null; remainingMs: number; programEnd: boolean };
+  let selectSleep: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    sleepState = { choice: null, remainingMs: 0, programEnd: false };
+    selectSleep = vi.fn();
+    menu = new PlayerMenu(
+      container, getCurrentChannel, onAction,
+      getAudioTracks, selectAudioTrack,
+      getSubtitleTracks, selectSubtitleTrack,
+      getSubtitleOffsetState, openSubtitleOffset,
+      getPlaybackRateState, selectPlaybackRate,
+      subtitleSearchAvailable, openSubtitleSearch,
+      { state: () => sleepState, select: selectSleep },
+    );
+  });
+
+  function sleepRow(): HTMLElement | null {
+    return el.querySelector<HTMLElement>('[data-menu-action="__sleep_open__"]');
+  }
+
+  it('shows Off while no timer runs, and the minutes left once one does', () => {
+    menu.show();
+    expect(sleepRow()!.querySelector('.menu-item-value')!.textContent).toBe('Off');
+
+    menu.hide();
+    sleepState = { choice: 30, remainingMs: 29 * 60_000 + 1, programEnd: false };
+    menu.show();
+    expect(sleepRow()!.querySelector('.menu-item-value')!.textContent).toBe('30 min');
+  });
+
+  it('lists the durations with the active one checked and focused', () => {
+    sleepState = { choice: 45, remainingMs: 45 * 60_000, programEnd: false };
+    menu.show();
+    sleepRow()!.click();
+
+    const rows = items();
+    expect(rows.map(row => row.dataset.sleepChoice)).toEqual([
+      undefined, 'off', '15', '30', '45', '60', '90', '120',
+    ]);
+    expect(rows[4].classList.contains('focused')).toBe(true);
+    expect(rows[4].querySelector('.menu-check')!.textContent).toBe('✓');
+  });
+
+  it('offers End of program only when the program end is known', () => {
+    sleepState.programEnd = true;
+    menu.show();
+    sleepRow()!.click();
+    const last = items()[items().length - 1];
+    expect(last.dataset.sleepChoice).toBe('program');
+    expect(last.textContent).toContain('End of program');
+  });
+
+  it('hands the picked choice to the host and closes the menu', () => {
+    menu.show();
+    sleepRow()!.click();
+    el.querySelector<HTMLElement>('[data-sleep-choice="60"]')!.click();
+    expect(selectSleep).toHaveBeenCalledWith(60);
+    expect(menu.visible).toBe(false);
+
+    menu.show();
+    sleepRow()!.click();
+    el.querySelector<HTMLElement>('[data-sleep-choice="off"]')!.click();
+    expect(selectSleep).toHaveBeenLastCalledWith(null);
+  });
+
+  it('Back leaves the duration list for the main menu', () => {
+    menu.show();
+    sleepRow()!.click();
+    expect(menu.handleBack()).toBe(true);
+    expect(sleepRow()).not.toBeNull();
+  });
+});
