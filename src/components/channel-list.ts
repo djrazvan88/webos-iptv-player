@@ -882,6 +882,13 @@ export class ChannelList {
     this.currentGroup = group;
     const main = this.container.querySelector<HTMLElement>('.channel-main');
     this.channelVirtualizer.centerOn(0, main?.clientHeight || CHANNEL_VIEWPORT_FALLBACK);
+    // Bring the group into the sidebar too, so the list says which one it is.
+    const list = this.container.querySelector<HTMLElement>('.group-list');
+    this.groupVirtualizer.ensureVisible(
+      this.getGroupEntries().findIndex(entry => entry.id === group),
+      list?.clientHeight || CHANNEL_VIEWPORT_FALLBACK,
+    );
+    if (list) this.scrollGuard.syncOffset(list, 'vertical', this.groupVirtualizer.scrollOffset);
     this.render(false);
     const first = this.container.querySelector<HTMLElement>('[data-list-position="0"]');
     if (first) this.nav.focus(first);

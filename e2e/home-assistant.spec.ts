@@ -60,6 +60,23 @@ test('a relaunch opens a group by name, flag and case aside', async ({ page }) =
   await expect(page.locator('.focused')).toHaveCount(1);
 });
 
+test('a relaunch scrolls a far group into the sidebar', async ({ page }) => {
+  await seed(page);
+  const many = ['#EXTM3U'];
+  for (let i = 1; i <= 40; i++) {
+    many.push(`#EXTINF:-1 group-title="Group ${String(i)}",Channel ${String(i)}`, `http://host/c${String(i)}.m3u8`);
+  }
+  await page.route('**/get.php*', route => route.fulfill({ contentType: 'application/x-mpegurl', body: many.join('\n') }));
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  await relaunch(page, { iptv: { open: 'group', group: 'Group 37' } });
+  const active = page.locator('.group-item.active');
+  await expect(active).toContainText('Group 37');
+  await expect(active).toBeInViewport();
+  await expect(page.locator('.channel-main .channel-item.focused')).toContainText('Channel 37');
+});
+
 test('a relaunch tunes a channel by name or number, and says so when missing', async ({ page }) => {
   await seed(page);
   await page.goto('/');
