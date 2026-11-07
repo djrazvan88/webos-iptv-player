@@ -753,6 +753,14 @@ export const StorageService = {
     set('player_osd_timeout_ms', timeout);
   },
 
+  getHaWebhookUrl(): string {
+    const url = get<unknown>('ha_webhook_url', '');
+    return typeof url === 'string' ? url : '';
+  },
+  setHaWebhookUrl(url: string): void {
+    set('ha_webhook_url', url.trim());
+  },
+
   getScreenSaverMinutes(): number {
     const minutes = get<unknown>('screen_saver_minutes', 0);
     return typeof minutes === 'number' && SCREEN_SAVER_MINUTE_OPTIONS.includes(minutes) ? minutes : 0;

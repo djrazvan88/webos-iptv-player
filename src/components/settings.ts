@@ -1170,6 +1170,18 @@ export class Settings {
                   ` : ''}
                 </div>
               </div>
+              <div class="settings-section">
+                <h3 class="settings-section-title">Home Assistant</h3>
+                <div class="settings-row">
+                  <div class="settings-field wide">
+                    <label>${t('settings.haWebhook')}</label>
+                    <input type="url" class="settings-input" data-focusable id="ha-webhook"
+                           value="${StorageService.getHaWebhookUrl()}"
+                           placeholder="http://homeassistant.local:8123/api/webhook/...">
+                    <div class="settings-item-hint">${t('settings.haWebhookHint')}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="settings-category" id="settings-data" data-settings-category="data">
@@ -2965,6 +2977,8 @@ export class Settings {
 
     const prevOs = StorageService.getOnlineSubtitleConfig();
     const osVal = (id: string) => ($(`#${id}`, this.container) as HTMLInputElement | null)?.value.trim() ?? '';
+    const haWebhook = $('#ha-webhook', this.container) as HTMLInputElement | null;
+    if (haWebhook) StorageService.setHaWebhookUrl(haWebhook.value);
     const sameCreds = osVal('os-key') === prevOs.opensubtitles.apiKey
       && osVal('os-user') === prevOs.opensubtitles.username
       && osVal('os-pass') === prevOs.opensubtitles.password;

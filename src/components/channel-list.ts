@@ -873,6 +873,21 @@ export class ChannelList {
     return true;
   }
 
+  // Opens a source group by name across all playlists, focused on its first
+  // channel (home automation's "open this list"). False when no such group.
+  openGroup(name: string): boolean {
+    this.currentPlaylist = '';
+    const group = `source:${name}` as ChannelGroupId;
+    if (!this.getGroupEntries().some(entry => entry.id === group)) return false;
+    this.currentGroup = group;
+    const main = this.container.querySelector<HTMLElement>('.channel-main');
+    this.channelVirtualizer.centerOn(0, main?.clientHeight || CHANNEL_VIEWPORT_FALLBACK);
+    this.render(false);
+    const first = this.container.querySelector<HTMLElement>('[data-list-position="0"]');
+    if (first) this.nav.focus(first);
+    return true;
+  }
+
   /** On entering the view: the entry point, or with `resume` where focus was left, brought into view. */
   highlightEntryPoint(resume = false): void {
     this.focusScope.enter(resume ? 'back' : 'key');

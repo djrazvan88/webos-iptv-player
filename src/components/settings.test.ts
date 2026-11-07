@@ -43,6 +43,7 @@ const {
     numberEntryOsdTimeoutMs: 1200,
     playerOsdTimeoutMs: 5000,
     screenSaverMinutes: 0,
+    haWebhookUrl: '',
     playlistRefreshHours: 6,
     epgRefreshHours: 6,
     xtreamCatalogRefreshHours: 6,
@@ -98,6 +99,8 @@ const {
       getNumberEntryOsdTimeoutMs: vi.fn(() => state.numberEntryOsdTimeoutMs),
       getPlayerOsdTimeoutMs: vi.fn(() => state.playerOsdTimeoutMs),
       getScreenSaverMinutes: vi.fn(() => state.screenSaverMinutes),
+      getHaWebhookUrl: vi.fn(() => state.haWebhookUrl),
+      setHaWebhookUrl: vi.fn((url: string) => { state.haWebhookUrl = url.trim(); }),
       getPlaylistRefreshIntervalHours: vi.fn(() => state.playlistRefreshHours),
       getEpgRefreshIntervalHours: vi.fn(() => state.epgRefreshHours),
       getXtreamCatalogRefreshIntervalHours: vi.fn(
@@ -632,6 +635,16 @@ describe('Settings.render', () => {
     click('#save-settings');
     expect(storageMock.setNumberEntryOsdTimeoutMs).toHaveBeenCalledWith(1800);
     expect(storageMock.setPlayerOsdTimeoutMs).toHaveBeenCalledWith(8000);
+  });
+
+  it('saves the Home Assistant webhook URL from Advanced', () => {
+    settings.render();
+    const input = container.querySelector<HTMLInputElement>('#settings-advanced #ha-webhook')!;
+    expect(input.value).toBe('');
+    input.value = 'http://host:8123/api/webhook/iptv_a1';
+    click('#save-settings');
+    expect(storageMock.setHaWebhookUrl).toHaveBeenCalledWith('http://host:8123/api/webhook/iptv_a1');
+    expect(state.haWebhookUrl).toBe('http://host:8123/api/webhook/iptv_a1');
   });
 
   it('offers the screen saver under Appearance, off by default, and persists it', () => {

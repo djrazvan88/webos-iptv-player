@@ -7,6 +7,7 @@ import type {
   WatchlistEntry,
   WatchlistKind,
 } from '../types';
+import { matchName } from '../services/remote-open';
 import { SpatialNav, isFocusMove } from '../navigation/spatial-nav';
 import { Focus, type FocusScope, type Via } from '../navigation/focus-scope';
 import { FocusRing, ringShown } from '../navigation/focus-ring';
@@ -748,6 +749,22 @@ export abstract class CatalogView<C extends { id: string; name: string }, I exte
       );
       if (this.account?.id === account.id) this.renderBrowse();
     }
+  }
+
+  // Home automation's "open this category": loads the account's browse
+  // underneath, so Back returns to it, then opens the category's grid. The
+  // category is matched by id, else by name. False when there is none.
+  async openCategory(account: PlaylistEntry, ref: string): Promise<boolean> {
+    if (this.account?.id !== account.id || this.browseStale || this.categories.length === 0) {
+      await this.open(account);
+    }
+    if (this.account?.id !== account.id) return false;
+    const name = matchName(ref, this.categories.map(category => category.name));
+    const category = this.categories.find(c => c.id === ref)
+      ?? this.categories.find(c => c.name === name);
+    if (!category) return false;
+    await this.openGrid(category.id);
+    return true;
   }
 
   // Deep-link entry (from Search): open this item's detail directly. Back returns

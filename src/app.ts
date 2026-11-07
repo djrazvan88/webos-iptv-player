@@ -27,6 +27,9 @@ import { Sidebar } from './components/sidebar';
 import { PlayerMenu, sleepRemainingLabel } from './components/player-menu';
 import { SleepPrompt } from './components/sleep-prompt';
 import { ScreenSaver } from './components/screen-saver';
+import { matchName, parseRemoteOpen, resolveRemoteChannel, type RemoteOpen } from './services/remote-open';
+import { HomeAssistantSync, notifyHomeAssistant, type HaCatalog } from './services/home-assistant-sync';
+import { loadSeriesCategories, loadVodCategories } from './services/xtream-catalog';
 import { SleepTimer, SLEEP_TIMER_EXTEND_MINUTES, type SleepTimerChoice } from './services/sleep-timer';
 import { TabBar, type Section, sectionForView } from './components/tab-bar';
 import { Movies } from './components/movies';
@@ -48,7 +51,7 @@ import {
 import { setDisplayTz } from './utils/time';
 import { initTheme, applyTheme, applyOverlayStyle, applyTextSize } from './services/theme-service';
 import { applyAnimationMode } from './services/motion-service';
-import { channelKey } from './utils/channel';
+import { channelKey, groupDisplayLabel } from './utils/channel';
 import { isSourceEnabled } from './utils/playlist';
 import { truncate } from './utils/text';
 import { $, show, hide } from './utils/dom';
@@ -91,6 +94,17 @@ class App {
   private menu!: PlayerMenu;
   private reminderPrompt = new ReminderPrompt();
   private sleepPrompt = new SleepPrompt();
+  private haSync = new HomeAssistantSync({
+    webhookUrl: () => StorageService.getHaWebhookUrl(),
+    signature: () => [
+      PlaylistService.channels,
+      PlaylistService.groupsRevision,
+      this.activeXtreamAccount()?.id ?? '',
+      getLocale(),
+    ],
+    catalog: () => this.buildHaCatalog(),
+    appVersion: __APP_VERSION__,
+  });
   private screenSaver = new ScreenSaver({
     timeoutMs: () => StorageService.getScreenSaverMinutes() * 60_000,
     // The live preview counts too: its audio means someone is there.
@@ -431,6 +445,7 @@ class App {
     await this.loadData();
     // Cold launch from a "Watch now" alert: channels are loaded now, so tune.
     this.handleLaunchParams(this.coldLaunchParams());
+    this.haSync.start();
     // Spawning the service process can synchronously stall Luna on a cold TV.
     // Keep LAN setup off the critical path so cached channels render first.
     const bundledServiceReady = this.startBundledService();
@@ -1488,6 +1503,85 @@ class App {
     this.player.play(index, catchup, scope, false);
   }
 
+  // Home automation asked for a place in the app (see services/remote-open.ts).
+  private openRemote(spec: RemoteOpen): void {
+    this.screenSaver.wake();
+    this.sidebar.hide();
+    this.menu.hide();
+    const notFound = (name: string): void => {
+      log.info('Remote open target missing', 'event=remote.open.missing', `kind=${spec.kind}`);
+      showToast(t('remote.notFound', { name }));
+    };
+    switch (spec.kind) {
+      case 'live':
+        this.tabBar.setActive('live');
+        this.switchSection('live');
+        return;
+      case 'group': {
+        const name = matchName(spec.group, PlaylistService.getGroupsForPlaylist());
+        this.tabBar.setActive('live');
+        this.switchSection('live');
+        if (!name || !this.channelList.openGroup(name)) notFound(spec.group);
+        return;
+      }
+      case 'channel': {
+        const index = resolveRemoteChannel(spec.channel, PlaylistService.channels);
+        if (index < 0) { notFound(spec.channel); return; }
+        this.playChannel(index);
+        return;
+      }
+      case 'movies':
+      case 'series': {
+        const section = spec.kind;
+        const account = this.activeXtreamAccount();
+        if (!account) { notFound(t(section === 'movies' ? 'nav.movies' : 'nav.series')); return; }
+        this.tabBar.setActive(section);
+        this.switchSection(section);
+        if (!spec.category) return;
+        const category = spec.category;
+        const view = section === 'movies' ? this.movies : this.series;
+        view.openCategory(account, category)
+          .then((found) => { if (!found) notFound(category); })
+          .catch(err => log.error('Remote category open failed', 'event=remote.open.failed', err));
+        return;
+      }
+    }
+  }
+
+  // What Home Assistant may offer: the groups and channels on screen and the
+  // catalog categories, with parental hiding already applied.
+  private async buildHaCatalog(): Promise<HaCatalog | null> {
+    const channels = PlaylistService.channels;
+    if (channels.length === 0) return null;
+    const groups = PlaylistService.getGroupsForPlaylist().map(name => ({
+      name,
+      label: groupDisplayLabel(name),
+      count: PlaylistService.getGroupCount(`source:${name}`),
+    }));
+    const account = this.activeXtreamAccount();
+    const visible = (kind: 'vod-category' | 'series-category') =>
+      (category: { id: string; name: string }): boolean => !!account
+        && !ParentalControlService.isCategoryConcealed({ kind, accountId: account.id, categoryId: category.id });
+    const signal = new AbortController().signal;
+    const [movies, series] = account
+      ? await Promise.all([
+        loadVodCategories(account, signal).catch(() => []),
+        loadSeriesCategories(account, signal).catch(() => []),
+      ])
+      : [[], []];
+    return {
+      groups,
+      channels: channels.map((channel, index) => ({
+        k: channelKey(channel),
+        n: channel.name,
+        g: channel.group,
+        num: index + 1,
+      })),
+      movies: movies.filter(visible('vod-category')).map(c => ({ id: c.id, name: c.name })),
+      series: series.filter(visible('series-category')).map(c => ({ id: c.id, name: c.name })),
+    };
+  }
+
   private bindReminderLifecycle(): void {
     setInterval(() => this.scanReminders(), CONFIG.REMINDER_SCAN_INTERVAL);
     document.addEventListener('visibilitychange', () => {
@@ -1505,6 +1599,11 @@ class App {
   }
 
   private handleLaunchParams(raw: unknown): void {
+    const remote = parseRemoteOpen(raw);
+    if (remote) {
+      this.openRemote(remote);
+      return;
+    }
     const idx = ReminderService.resolveLaunchChannel(raw);
     if (idx >= 0) {
       log.info('Reminder launch — tuning channel index', idx);
@@ -1930,6 +2029,10 @@ class App {
     if (!await this.flushUserData('exit')) {
       log.warn('Sleep timer saved no user data', 'event=sleep.flush.failed');
     }
+    // Home Assistant can always power the TV off; the Luna call below may be
+    // refused to an app in Developer Mode.
+    const viaHa = await notifyHomeAssistant(StorageService.getHaWebhookUrl(), 'sleep', __APP_VERSION__);
+    log.info('Sleep timer power off', 'event=sleep.power_off', `home_assistant=${viaHa ? 'sent' : 'no'}`);
     if (!isLunaAvailable()) {
       this.closeForSleep('no_luna');
       return;

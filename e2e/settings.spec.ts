@@ -164,7 +164,7 @@ test.describe('Settings navigation', () => {
     await page.goto('/');
     await page.locator('[data-settings-target="advanced"]').click();
 
-    await expect(page.locator('#settings-advanced .settings-section-title')).toHaveText('Advanced');
+    await expect(page.locator('#settings-advanced .settings-section-title')).toHaveText(['Advanced', 'Home Assistant']);
     const layouts = await page.locator(
       '#settings-advanced .settings-advanced-row',
     )
