@@ -7,6 +7,13 @@ import { EpgService } from './services/epg-service';
 import { ChannelHealthService } from './services/channel-health';
 import { StorageService } from './services/storage-service';
 import {
+  ConfigBackup,
+  loadBackupSettings,
+  markRestoreSkipped,
+  requestPersistentStorage,
+  restoreIfEmpty,
+} from './services/config-backup';
+import {
   clearAllCachedData,
   clearCachedCatalog,
   clearCachedPlaylist,
@@ -2105,6 +2112,7 @@ class App {
       await clearAllCachedData();
       await StorageService.clearUserData();
       StorageService.clearAll();
+      markRestoreSkipped();
       log.info(
         'App reset completed',
         'event=persistence.reset.completed',
@@ -2145,9 +2153,23 @@ class App {
   }
 }
 
+async function boot(): Promise<void> {
+  const backup = await loadBackupSettings();
+  if (await restoreIfEmpty(backup)) {
+    location.reload();
+    return;
+  }
+  void requestPersistentStorage();
+  const app = new App();
+  await app.init();
+  new ConfigBackup({
+    webhookUrl: () => StorageService.getHaWebhookUrl() || backup.webhookUrl,
+    appVersion: __APP_VERSION__,
+  }).start();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   installGlobalErrorHandlers();
   logEnvironment(CONFIG.VERSION);
-  const app = new App();
-  app.init().catch(err => log.error('App init failed:', err));
+  boot().catch(err => log.error('App init failed:', err));
 });
