@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+  namespace 'org.frengineering.iptvtest'
+  compileSdk 34
+  defaultConfig {
+    applicationId 'org.frengineering.iptvtest'
+    minSdk 22
+    targetSdk 30
+    versionCode 9
+    versionName '1.19.4-fire'
+  }
+  signingConfigs {
+    test { storeFile rootProject.file('test.keystore'); storePassword 'frtest'; keyAlias 'fr'; keyPassword 'frtest' }
+  }
+  buildTypes {
+    release { minifyEnabled false; signingConfig signingConfigs.test }
+    debug { signingConfig signingConfigs.test }
+  }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+  lint { abortOnError false; checkReleaseBuilds false }
+  androidResources { noCompress += ['js','css','html','json'] }
+}
+dependencies {
+  def m3 = '1.4.1'
+  implementation "androidx.media3:media3-exoplayer:$m3"
+  implementation "androidx.media3:media3-exoplayer-hls:$m3"
+  implementation "androidx.media3:media3-exoplayer-dash:$m3"
+}

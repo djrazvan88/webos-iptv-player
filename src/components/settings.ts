@@ -1230,7 +1230,7 @@ export class Settings {
             </div>
 
             <div class="settings-about">
-              ${CONFIG.APP_NAME} v${CONFIG.VERSION}
+              ${CONFIG.APP_NAME} v${CONFIG.VERSION} · ${CONFIG.APP_CREDIT}
             </div>
           </div>
 

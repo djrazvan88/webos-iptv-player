@@ -12,6 +12,7 @@ export type TabBarAccountMenuCloseReason = AccountMenuCloseReason | 'bar' | 'bla
 import { t } from '../i18n';
 import { createLogger } from '../utils/logger';
 import { Focus, Tier, type FocusScope } from '../navigation/focus-scope';
+import { isFireTvNative } from '../utils/platform';
 
 // Cap for the expanded inline search box.
 export const SEARCH_INPUT_MAX_WIDTH = 600;
@@ -507,7 +508,7 @@ export class TabBar {
     if (!this.el) return;
     morph(this.el, html`
       <div class="tab-bar-inner" data-nav-container>
-        <span class="tab-bar-title">${CONFIG.APP_NAME}</span>
+        <span class="tab-bar-title">${isFireTvNative() ? 'IPTV Player' : CONFIG.APP_NAME}<span class="tab-bar-credit">${CONFIG.APP_CREDIT}</span></span>
         ${this.sections.filter((s) => s.id !== 'search').map((s) => {
           const activeCls = s.id === this.active ? 'active' : '';
           return html`

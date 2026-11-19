@@ -1,0 +1,127 @@
+# IPTV Player su Fire TV TCL (salotto) — package Home Assistant
+# Da copiare in /config/packages/iptv_fire.yaml (i package sono già attivi da iptv_lg.yaml).
+# Prerequisiti:
+#  1) integrazione "Android Debug Bridge" per 192.168.1.49 (aggiunta il 19/11/2026),
+#     entità media_player.fire_tv_salotto
+#  2) secrets.yaml:  iptv_fire_webhook_id (stesso ID scritto nell'app, assets/fire.json)
+# Usa gli stessi selettori della LG (input_select.iptv_gruppo / iptv_canale / iptv_film / iptv_serie):
+# configurazione e liste sono le stesse sulle due TV.
+
+automation:
+  - id: iptv_fire_webhook
+    alias: "IPTV Fire - dati dall'app"
+    description: "Timer dell'app → spegne la Fire TV. Il catalogo lo fornisce già la LG (stessa configurazione)."
+    mode: queued
+    triggers:
+      - trigger: webhook
+        webhook_id: !secret iptv_fire_webhook_id
+        allowed_methods: [POST]
+        local_only: true
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.json is defined and trigger.json.event == 'sleep' }}"
+    actions:
+      - action: media_player.turn_off
+        target:
+          entity_id: media_player.fire_tv_salotto
+
+script:
+  iptv_fire_lancia:
+    alias: "IPTV Fire - apri"
+    mode: restart
+    fields:
+      params:
+        description: Parametri di avvio, come per la LG
+        example: '{"iptv": {"open": "live"}}'
+    sequence:
+      - if: "{{ is_state('media_player.fire_tv_salotto', ['off', 'unavailable', 'unknown', 'standby']) }}"
+        then:
+          - action: media_player.turn_on
+            target:
+              entity_id: media_player.fire_tv_salotto
+          - wait_template: "{{ not is_state('media_player.fire_tv_salotto', 'off') }}"
+            timeout: "00:00:20"
+            continue_on_timeout: true
+          - delay: "00:00:02"
+      # sveglia anche dal salvaschermo (le foto partono dopo 1 minuto): senza, l'app resta sotto
+      - action: androidtv.adb_command
+        target:
+          entity_id: media_player.fire_tv_salotto
+        data:
+          command: input keyevent KEYCODE_WAKEUP && input keyevent KEYCODE_HOME && sleep 1
+      - action: androidtv.adb_command
+        target:
+          entity_id: media_player.fire_tv_salotto
+        data:
+          command: >-
+            am start -n org.frengineering.iptvtest/.MainActivity
+            --es params64 {{ (params | default({'iptv': {'open': 'live'}}) | to_json) | base64_encode }}
+
+  iptv_fire_apri_live:
+    alias: IPTV Fire - apri lista canali
+    icon: mdi:television
+    sequence:
+      - action: script.iptv_fire_lancia
+        data:
+          params:
+            iptv: { open: live }
+
+  iptv_fire_apri_gruppo:
+    alias: IPTV Fire - apri gruppo scelto
+    icon: mdi:format-list-bulleted
+    sequence:
+      - variables:
+          nome: >-
+            {{ state_attr('sensor.iptv_catalogo', 'groups') | default([], true)
+               | selectattr('label', 'eq', states('input_select.iptv_gruppo'))
+               | map(attribute='name') | first | default('') }}
+      - condition: template
+        value_template: "{{ nome != '' }}"
+      - action: script.iptv_fire_lancia
+        data:
+          params:
+            iptv: { open: group, group: "{{ nome }}" }
+
+  iptv_fire_apri_canale:
+    alias: IPTV Fire - apri canale scelto
+    icon: mdi:television-classic
+    sequence:
+      - variables:
+          num: "{{ states('input_select.iptv_canale').split(' · ')[0] | int(0) }}"
+          chiave: >-
+            {{ state_attr('sensor.iptv_catalogo', 'channels') | default([], true)
+               | selectattr('num', 'eq', num) | map(attribute='k') | first | default('') }}
+      - condition: template
+        value_template: "{{ chiave != '' }}"
+      - action: script.iptv_fire_lancia
+        data:
+          params:
+            iptv: { open: channel, channel: "{{ chiave }}" }
+
+  iptv_fire_apri_film:
+    alias: IPTV Fire - apri categoria film scelta
+    icon: mdi:movie-open
+    sequence:
+      - variables:
+          cat: >-
+            {{ state_attr('sensor.iptv_catalogo', 'movies') | default([], true)
+               | selectattr('name', 'eq', states('input_select.iptv_film'))
+               | map(attribute='id') | first | default('') }}
+      - action: script.iptv_fire_lancia
+        data:
+          params:
+            iptv: { open: movies, category: "{{ cat }}" }
+
+  iptv_fire_apri_serie:
+    alias: IPTV Fire - apri categoria serie scelta
+    icon: mdi:television-play
+    sequence:
+      - variables:
+          cat: >-
+            {{ state_attr('sensor.iptv_catalogo', 'series') | default([], true)
+               | selectattr('name', 'eq', states('input_select.iptv_serie'))
+               | map(attribute='id') | first | default('') }}
+      - action: script.iptv_fire_lancia
+        data:
+          params:
+            iptv: { open: series, category: "{{ cat }}" }

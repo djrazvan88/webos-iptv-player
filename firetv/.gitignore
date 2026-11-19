@@ -1,0 +1,8 @@
+app/build/
+.gradle/
+local.properties
+app/src/main/assets/www/
+app/src/main/assets/fire.json
+ha-backup.json
+*.keystore
+*.apk

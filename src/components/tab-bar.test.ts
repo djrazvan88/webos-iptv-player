@@ -50,7 +50,9 @@ const focusedLabel = () => {
 describe('TabBar', () => {
   it('renders the app title and the full section set for an Xtream account', () => {
     expect(bar.shown).toBe(true);
-    expect(document.querySelector('.tab-bar-title')?.textContent).toBe('webOS IPTV Player');
+    const title = document.querySelector('.tab-bar-title');
+    expect(title?.firstChild?.textContent).toBe('webOS IPTV Player');
+    expect(title?.querySelector('.tab-bar-credit')?.textContent).toBe('creato da Filip Razvan');
     expect(items()).toEqual(['Live', 'Guide', 'Movies', 'Series', 'Settings', 'Search']);
     expect(focusedLabel()).toBe(null); // shown but not focused → no ring
     expect(document.body.classList.contains('tabbar-docked')).toBe(true);

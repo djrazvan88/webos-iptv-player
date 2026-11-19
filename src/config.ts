@@ -1,6 +1,7 @@
 export const CONFIG = {
   APP_ID: __APP_ID__ as string,
   APP_NAME: 'webOS IPTV Player',
+  APP_CREDIT: 'creato da Filip Razvan',
   VERSION: __APP_VERSION__ as string,
 
   STORAGE_PREFIX: 'iptv_',

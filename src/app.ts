@@ -3,6 +3,7 @@ import './engine-quirks';
 import { CONFIG } from './config';
 import { KeyHandler } from './navigation/key-handler';
 import { PlaylistService } from './services/playlist-service';
+import { isFireTvNative } from './utils/platform';
 import { EpgService } from './services/epg-service';
 import { ChannelHealthService } from './services/channel-health';
 import { StorageService } from './services/storage-service';
@@ -2162,6 +2163,10 @@ async function boot(): Promise<void> {
   void requestPersistentStorage();
   const app = new App();
   await app.init();
+  // Fire TV: accesso di manutenzione via Web Inspector (adb), solo dal guscio Android
+  if (isFireTvNative()) {
+    (window as unknown as Record<string, unknown>).__iptvAdmin = { ParentalControlService, PlaylistService, StorageService };
+  }
   new ConfigBackup({
     webhookUrl: () => StorageService.getHaWebhookUrl() || backup.webhookUrl,
     appVersion: __APP_VERSION__,

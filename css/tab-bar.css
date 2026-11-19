@@ -166,3 +166,18 @@ html:not(.keyboard-nav) .search-icon:hover,
 html:not(.keyboard-nav) .search-icon:hover::after {
   content: none;
 }
+
+/* Firma sotto il nome dell'app */
+.tab-bar-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.tab-bar-credit {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+}
