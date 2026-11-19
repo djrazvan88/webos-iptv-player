@@ -83,6 +83,10 @@ export class Player {
   private vodTracksLatePending = false;
   private pendingResumeSecs = 0;
   private pendingSeekTarget: number | null = null;
+  private vodReconnectCount = 0;
+  private vodReconnectFrom = 0;
+  private vodReconnecting = false;
+  private vodStarted = false; // the current VOD file reached 'playing' at least once
   private wasPlayingBeforeHide = false;
   private dvrPauseTick: ReturnType<typeof setInterval> | null = null;
   // Catch-up progress checkpointing. Wall-clock time of the last periodic save;
@@ -334,6 +338,7 @@ export class Player {
     });
     onCurrent('playing', () => {
       this.startupPending = false;
+      if (this.vod) this.vodStarted = true;
       const recovered = this.errorRetryPending;
       if (recovered) {
         this.cancelErrorAdvance();
@@ -725,6 +730,9 @@ export class Player {
     if (!this.videoEl) { log.warn('playVod ignored — no video element'); return; }
     this.playbackRate.reset();
     this.startPlaybackGeneration();
+    if (!this.vodReconnecting) { this.vodReconnectCount = 0; this.vodReconnectFrom = 0; }
+    this.vodReconnecting = false;
+    this.vodStarted = false;
     log.info('playVod', v.title, '| resume', v.resumeSecs);
     this.saveCatchupProgress(); // save any active catch-up before switching to VOD
     this.currentChannel = null;
@@ -1067,6 +1075,39 @@ export class Player {
     this.tracks.applyManifest(manifest);
   }
 
+  /**
+   * Providers sometimes cut a VOD file short (net::ERR_CONTENT_LENGTH_MISMATCH),
+   * which the native pipeline reports as a fatal media error a few seconds in.
+   * Reopen the same file at the position reached instead of dropping to the
+   * menu. Only for streams that had started playing: a file that never
+   * opened keeps the existing error path.
+   */
+  private tryVodReconnect(v: VodPlayback): boolean {
+    const el = this.videoEl;
+    if (!el || !this.vodStarted || !Number.isFinite(el.duration) || el.duration <= 0) return false;
+    const pos = this.pendingSeekTarget ?? (el.currentTime || 0);
+    if (pos - this.vodReconnectFrom > CONFIG.PLAYER.VOD_RECONNECT_RESET_SECS) this.vodReconnectCount = 0;
+    if (this.vodReconnectCount >= CONFIG.PLAYER.VOD_RECONNECT_ATTEMPTS) return false;
+    this.vodReconnectCount++;
+    const resumeSecs = Math.max(0, pos - CONFIG.PLAYER.VOD_RECONNECT_REWIND_SECS);
+    this.vodReconnectFrom = resumeSecs;
+    log.warn('VOD playback error; reopening at the reached position', 'event=playback.vod.reconnect',
+      `attempt=${this.vodReconnectCount}`, `total=${CONFIG.PLAYER.VOD_RECONNECT_ATTEMPTS}`,
+      `pos=${pos.toFixed(1)}`, this.playbackLabel(), v.title);
+    const resumed: VodPlayback = { ...v, resumeSecs };
+    this.saveVodResume();
+    this.osd.updateMessage(t('player.reconnecting'));
+    this.showOSD();
+    this.errorAdvanceTimer = setTimeout(() => {
+      this.errorAdvanceTimer = null;
+      if (this.vod !== v) return;
+      this.vodReconnecting = true;
+      this.recreateVideoEl();
+      this.playVodResolved(resumed);
+    }, CONFIG.PLAYER.VOD_RECONNECT_DELAY_MS);
+    return true;
+  }
+
   private onError(reason?: 'unsupported'): void {
     if (!this.playbackActive || this.wasPlayingBeforeHide) return;
     if (this.errorAdvanceTimer !== null) return;
@@ -1075,6 +1116,7 @@ export class Player {
       this.onPlaybackStateChanged();
     }
     this.cancelLiveHistoryTimer();
+    if (this.vod && this.tryVodReconnect(this.vod)) return;
     if (this.vod) {
       const v = this.vod;
       this.vod = null;            // so stop() won't overwrite/wipe the resume point on error

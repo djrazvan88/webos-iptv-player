@@ -1252,6 +1252,73 @@ describe('Player VOD mode', () => {
   });
   afterEach(() => { container.remove(); vi.restoreAllMocks(); });
 
+  describe('reconnect after a cut-short file', () => {
+    const startVod = (onBack = vi.fn()) => {
+      HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      HTMLMediaElement.prototype.pause = vi.fn();
+      HTMLMediaElement.prototype.load = vi.fn();
+      const v = document.createElement('video');
+      container.appendChild(v);
+      const withDuration = (el: HTMLVideoElement) => {
+        Object.defineProperty(el, 'duration', { configurable: true, value: 1200 });
+        return el;
+      };
+      withDuration(v);
+      player.init(v);
+      player.playVod(req({ onBack }));
+      return { onBack, withDuration, cur: () => container.querySelector('video') as HTMLVideoElement };
+    };
+
+    beforeEach(() => { vi.useFakeTimers(); vi.mocked(showToast).mockClear(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('reopens the file at the reached position instead of going back', () => {
+      const { onBack, withDuration, cur } = startVod();
+      const first = cur();
+      Object.defineProperty(first, 'currentTime', { configurable: true, writable: true, value: 120 });
+      first.dispatchEvent(new Event('playing'));
+      first.dispatchEvent(new Event('error'));
+      expect(onBack).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1500);
+      expect(player.isVod()).toBe(true);
+      expect(cur()).not.toBe(first); // fresh element
+      expect((player as unknown as { pendingResumeSecs: number }).pendingResumeSecs).toBe(118);
+      withDuration(cur());
+    });
+
+    it('gives up after three reconnects without progress', () => {
+      const { onBack, withDuration, cur } = startVod();
+      for (let i = 0; i < 3; i++) {
+        const el = withDuration(cur());
+        Object.defineProperty(el, 'currentTime', { configurable: true, writable: true, value: 120 });
+        el.dispatchEvent(new Event('playing'));
+        el.dispatchEvent(new Event('error'));
+        vi.advanceTimersByTime(1500);
+        expect(onBack).not.toHaveBeenCalled();
+      }
+      const last = withDuration(cur());
+      Object.defineProperty(last, 'currentTime', { configurable: true, writable: true, value: 120 });
+      last.dispatchEvent(new Event('playing'));
+      last.dispatchEvent(new Event('error'));
+      expect(onBack).toHaveBeenCalledTimes(1);
+      expect(showToast).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the old behaviour when the file never started playing', () => {
+      HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      HTMLMediaElement.prototype.pause = vi.fn();
+      HTMLMediaElement.prototype.load = vi.fn();
+      const v = document.createElement('video');
+      container.appendChild(v);
+      player.init(v);
+      const onBack = vi.fn();
+      player.playVod(req({ onBack }));
+      v.dispatchEvent(new Event('error')); // never reached 'playing'
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('defers VOD playback until the authorizer runs the action', () => {
     let deferred: (() => void) | null = null;
     const authorize = vi.fn((_item, action: () => void) => {
