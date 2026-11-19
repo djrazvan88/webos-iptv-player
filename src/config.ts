@@ -45,6 +45,7 @@ export const CONFIG = {
     EDGE_SCROLL_PARK_POLL_MS: 150,
   },
   PLAYER: {
+    RESUME_DEFER_MS: 300,     // wait before re-tuning on visible: a relaunch that opens a channel supersedes it
     LIVE_PREVIEW_UPCOMING_COUNT: 4,
     LIVE_PREVIEW_REFRESH_MS: 1000,
     DEFAULT_PLAYER_OSD_TIMEOUT_MS: 5000,

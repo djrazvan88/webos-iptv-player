@@ -2731,3 +2731,21 @@ describe('Player previous channel recall', () => {
     expect(player.getCurrentChannel()).toBe(CH_A);
   });
 });
+
+describe('deferred resume on visibility', () => {
+  it('re-tunes after the defer window when nothing else starts', () => {
+    const resume = vi.spyOn(player, 'resume');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(resume).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(300);
+    expect(resume).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the re-tune when a relaunch opens a channel right away', () => {
+    const resume = vi.spyOn(player, 'resume');
+    document.dispatchEvent(new Event('visibilitychange'));
+    player.play(0);
+    vi.advanceTimersByTime(300);
+    expect(resume).not.toHaveBeenCalled();
+  });
+});

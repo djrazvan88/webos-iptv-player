@@ -88,6 +88,8 @@ export class Player {
   private vodReconnecting = false;
   private vodStarted = false; // the current VOD file reached 'playing' at least once
   private wasPlayingBeforeHide = false;
+  private resumeTimer: ReturnType<typeof setTimeout> | null = null;
+  private loadCount = 0;
   private dvrPauseTick: ReturnType<typeof setInterval> | null = null;
   // Catch-up progress checkpointing. Wall-clock time of the last periodic save;
   // reset to Date.now() on every new catch-up session so the first checkpoint
@@ -248,8 +250,28 @@ export class Player {
     // Suspending on blur is what blacked the app out when settings opened, and
     // getForegroundAppInfo (the precise signal) is a privileged Luna method this
     // app isn't allowed to call.
-    const onHidden = (src: string) => { log.debug('suspend trigger:', src); this.suspend(); };
-    const onVisible = (src: string) => { log.debug('resume trigger:', src); this.resume(); };
+    // Resume waits a moment: when the app is brought back to open a channel
+    // (Home Assistant, a reminder), the new stream starts right after and the
+    // old one must not be re-tuned first — an extra connection to the provider.
+    const onHidden = (src: string) => {
+      this.cancelDeferredResume();
+      log.debug('suspend trigger:', src);
+      this.suspend();
+    };
+    const onVisible = (src: string) => {
+      this.cancelDeferredResume();
+      const loads = this.loadCount;
+      this.resumeTimer = setTimeout(() => {
+        this.resumeTimer = null;
+        if (this.loadCount !== loads) {
+          log.info('Resume superseded by a new stream', 'event=player.resume.superseded', `src=${src}`);
+          this.wasPlayingBeforeHide = false;
+          return;
+        }
+        log.debug('resume trigger:', src);
+        this.resume();
+      }, CONFIG.PLAYER.RESUME_DEFER_MS);
+    };
 
     document.addEventListener('visibilitychange', () => {
       log.debug('visibilitychange →', document.visibilityState);
@@ -1019,7 +1041,14 @@ export class Player {
     back?.();
   }
 
+  private cancelDeferredResume(): void {
+    if (this.resumeTimer === null) return;
+    clearTimeout(this.resumeTimer);
+    this.resumeTimer = null;
+  }
+
   private loadStream(url: string, extras: Record<string, string> | null, opts?: { direct?: boolean }): void {
+    this.loadCount++;
     this.tracks.resetForLoad();
     this.vodTracksLatePending = false;
     this.manifestVariants = [];
