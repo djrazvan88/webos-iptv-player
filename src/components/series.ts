@@ -5,7 +5,7 @@ import { StorageService } from '../services/storage-service';
 import { loadSeriesCategories, loadSeries, loadSeriesInfo } from '../services/xtream-catalog';
 import { xtreamEpisodeUrl, type XtreamCredentials } from '../utils/xtream-url';
 import { CatalogView, type CatalogHandlers, type CollectionKind, type CollectionEntry } from './catalog-view';
-import { PLAY_ICON, watchlistIcon } from './icons';
+import { PLAY_ICON, REMOVE_ICON, watchlistIcon } from './icons';
 import { showToast } from './toast';
 import { t, tp } from '../i18n';
 import { VirtualList } from '../utils/virtual-list';
@@ -80,7 +80,14 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
 
   protected collectionEntries(kind: CollectionKind): CollectionEntry[] {
     if (kind === 'continue') {
-      return this.resume.map(entry => ({
+      const seen: Record<string, true> = {};
+      return this.resume.filter(entry => {
+        const owner = entry.watchlistOwner?.itemId;
+        if (!owner) return true;
+        if (seen[owner]) return false;
+        seen[owner] = true;
+        return true;
+      }).map(entry => ({
         id: entry.itemId, key: `r:${entry.itemId}`,
         tile: managing => this.resumeTile(entry, managing),
       }));
@@ -119,6 +126,8 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
 
   protected selectExtra(el: HTMLElement): boolean {
     if (el.dataset.action === 'watchlist') { this.toggleWatchlist(); return true; }
+    if (el.dataset.action === 'continue-series') { this.continueSeries(); return true; }
+    if (el.dataset.action === 'remove-resume') { this.removeSeriesResume(); return true; }
     if (el.dataset.resumeEpisode !== undefined) { this.playResume(el.dataset.resumeEpisode); return true; }
     if (el.dataset.season !== undefined) { this.selectSeason(Number(el.dataset.season)); return true; }
     if (el.dataset.episodeId !== undefined) { this.playEpisode(el.dataset.episodeId); return true; }
@@ -167,7 +176,9 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     }
     if (this.mode === 'detail' && this.currentSeries === series) {
       this.detailLoading = false;
-      this.selectedSeason = this.currentInfo?.seasons[0] ?? 0;
+      const resumed = this.seriesResume();
+      const resumedEp = resumed ? this.findEpisode(resumed.itemId) : null;
+      this.selectedSeason = resumedEp?.season ?? this.currentInfo?.seasons[0] ?? 0;
       this.renderDetail();
     }
   }
@@ -234,6 +245,51 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     });
   }
 
+  // The Continue entry of the open series: its newest episode in progress or up next.
+  private seriesResume(): ResumeEntry | null {
+    const series = this.currentSeries;
+    const a = this.account;
+    if (!series || !a) return null;
+    return StorageService.getResumeList(a.id).find(entry => entry.kind === 'episode'
+      && entry.watchlistOwner?.itemId === series.seriesId) ?? null;
+  }
+
+  private continueSeries(): void {
+    const entry = this.seriesResume();
+    const series = this.currentSeries;
+    if (!entry || !series) return;
+    const ep = this.findEpisode(entry.itemId);
+    if (!ep) {
+      this.playStoredResume(entry);
+      return;
+    }
+    this.handlers.onPlayVod({
+      ...this.episodePlayback(series, ep),
+      resumeSecs: entry.nextUp ? 0 : entry.position,
+      episodeQueue: this.episodesAfter(ep.id, series),
+    });
+  }
+
+  private removeSeriesResume(): void {
+    const a = this.account;
+    const series = this.currentSeries;
+    if (!a || !series) return;
+    for (const entry of StorageService.getResumeList(a.id)) {
+      if (entry.kind === 'episode' && entry.watchlistOwner?.itemId === series.seriesId) {
+        StorageService.clearResume(a.id, 'episode', entry.itemId);
+      }
+    }
+    showToast(t('catalog.continueWatchingRemoved'));
+    this.renderDetail();
+  }
+
+  private continueLabel(entry: ResumeEntry): string {
+    const ep = this.findEpisode(entry.itemId);
+    const code = ep ? `S${ep.season}E${ep.episode}` : '';
+    if (!code) return t(entry.nextUp ? 'catalog.nextEpisode' : 'common.resume');
+    return t(entry.nextUp ? 'catalog.watchEpisode' : 'catalog.continueEpisode', { code });
+  }
+
   private creds(): XtreamCredentials {
     const a = this.account!;
     return { baseUrl: a.url, username: a.xtream!.username, password: a.xtream!.password };
@@ -243,9 +299,13 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
   // label + poster + stored container extension), not the owning series, so it
   // resumes the episode directly using the stored ext (falling back to mp4).
   private playResume(episodeId: string): void {
-    const a = this.account;
     const r = this.resume.find((e) => e.itemId === episodeId);
-    if (!a || !r) return;
+    if (r) this.playStoredResume(r);
+  }
+
+  private playStoredResume(r: ResumeEntry): void {
+    const a = this.account;
+    if (!a) return;
     this.handlers.onPlayVod({
       url: xtreamEpisodeUrl(this.creds(), r.itemId, r.ext || 'mp4'),
       title: r.name,
@@ -255,7 +315,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
       kind: 'episode',
       categoryId: r.categoryId,
       parentalItemId: r.watchlistOwner?.itemId,
-      resumeSecs: r.position,
+      resumeSecs: r.nextUp ? 0 : r.position,
       subtitles: [],
       episodeQueue: r.episodeQueue,
       watchlistOwner: r.watchlistOwner,
@@ -267,7 +327,8 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
       <div class="catalog-tile" ${raw(managing ? '' : 'data-focusable')} data-key="r:${r.itemId}" data-resume-episode="${r.itemId}">
         <div class="catalog-poster-wrap">${this.posterCell(r.name, r.poster)}${
           this.itemLockBadge(r.categoryId ?? '', r.watchlistOwner?.itemId ?? r.itemId)}${
-          this.progressBar(r.position, r.duration)}${this.removeMark(managing, `r:${r.itemId}`)}</div>
+          r.nextUp ? html`<span class="catalog-next-badge">${t('catalog.nextEpisode')}</span>`
+            : this.progressBar(r.position, r.duration)}${this.removeMark(managing, `r:${r.itemId}`)}</div>
         <div class="catalog-tile-name">${r.name}</div>
       </div>
     `;
@@ -283,7 +344,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
           <div class="episode-title">
             <span class="episode-num">E${ep.episode}</span>
             <span class="episode-name">${ep.title}</span>
-            ${saved ? html`<span class="episode-resume">${t('common.resume')}</span>` : ''}
+            ${saved ? html`<span class="episode-resume">${t(saved.nextUp ? 'catalog.nextEpisode' : 'common.resume')}</span>` : ''}
           </div>
           ${mins ? html`<div class="episode-meta">${mins}</div>` : ''}
           ${ep.plot ? html`<p class="episode-plot">${ep.plot}</p>` : ''}
@@ -313,6 +374,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     }
     const focusedKey = this.focusedKey();
     const watchlisted = StorageService.isWatchlisted(a.id, 'series', series.seriesId);
+    const resumed = this.seriesResume();
     const previousScroller = this.layer('detail').querySelector<HTMLElement>('.series-detail');
     const previousEpisodes = this.layer('detail').querySelector<HTMLElement>('.series-episodes');
     this.episodeVirtualizer.setLeadingSize(
@@ -341,10 +403,19 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
             ${info?.cast ? html`<div class="detail-cast"><span class="detail-label">${t('catalog.cast')}</span> ${info.cast}</div>` : ''}
             ${info?.director ? html`<div class="detail-cast"><span class="detail-label">${t('catalog.director')}</span> ${info.director}</div>` : ''}
             <div class="detail-actions">
+              ${resumed ? html`
+                <button class="detail-btn detail-btn-primary" data-focusable data-key="continue-series" data-action="continue-series">
+                  <span class="detail-btn-icon">${raw(PLAY_ICON)}</span><span>${this.continueLabel(resumed)}</span>
+                </button>` : ''}
               <button class="detail-btn" data-focusable data-key="watchlist" data-action="watchlist">
                 <span class="detail-btn-icon">${raw(watchlistIcon(watchlisted))}</span>
                 <span>${t(watchlisted ? 'catalog.removeWatchlist' : 'catalog.addWatchlist')}</span>
               </button>
+              ${resumed ? html`
+                <button class="detail-btn detail-btn-danger" data-focusable data-key="remove-resume" data-action="remove-resume">
+                  <span class="detail-btn-icon">${raw(REMOVE_ICON)}</span>
+                  <span>${t('catalog.removeContinueWatching')}</span>
+                </button>` : ''}
             </div>
             ${this.detailLoading
               ? html`<p class="catalog-hint">${t('common.loading')}</p>`

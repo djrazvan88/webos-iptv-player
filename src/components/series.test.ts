@@ -13,6 +13,7 @@ const { catalogMock, storageMock, watchlistState, toastMock } = vi.hoisted(() =>
       setCatalogSort: vi.fn((_kind: 'vod' | 'series', _sort: CatalogSortPreference) => true),
       getResumeList: vi.fn(() => [] as unknown[]),
       getResume: vi.fn(() => null),
+      clearResume: vi.fn(),
       getWatchlist: vi.fn(() => watchlistState.entries),
       isWatchlisted: vi.fn((_accountId: string, _kind: WatchlistKind, itemId: string) =>
         watchlistState.entries.some((entry) => entry.itemId === itemId)),
@@ -652,6 +653,58 @@ describe('Series detail', () => {
     row.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     view.handleAction('select');
     expect(handlers.onPlayVod).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'e1', resumeSecs: 450 }));
+  });
+
+  it('continues the series from its Continue entry on the detail screen', async () => {
+    catalogMock.loadSeriesInfo.mockResolvedValue(SERIES_INFO);
+    storageMock.getResumeList.mockReturnValue([{
+      accountId: 'x1', kind: 'episode', itemId: 'e2', name: 'Series One — S2E1', poster: '', ext: 'mkv',
+      position: 0, duration: 0, updatedAt: 1, nextUp: true, watchlistOwner: { kind: 'series', itemId: 's1' },
+    }]);
+    const { view, handlers } = await openWith();
+    await openDetail(view);
+
+    const btn = container.querySelector<HTMLElement>('[data-action="continue-series"]')!;
+    expect(btn.textContent).toContain('Watch S2E1');
+    // The season of the queued episode is the one shown.
+    expect(container.querySelector('.series-season-btn.active')?.textContent).toContain('2');
+    btn.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    expect(handlers.onPlayVod).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'e2', resumeSecs: 0 }));
+  });
+
+  it('resumes the in-progress episode and removes the series from Continue Watching', async () => {
+    catalogMock.loadSeriesInfo.mockResolvedValue(SERIES_INFO);
+    storageMock.getResumeList.mockReturnValue([{
+      accountId: 'x1', kind: 'episode', itemId: 'e1', name: 'Series One — S1E1', poster: '', ext: 'mp4',
+      position: 450, duration: 1500, updatedAt: 1, watchlistOwner: { kind: 'series', itemId: 's1' },
+    }]);
+    const { view, handlers } = await openWith();
+    await openDetail(view);
+
+    const btn = container.querySelector<HTMLElement>('[data-action="continue-series"]')!;
+    expect(btn.textContent).toContain('Continue S1E1');
+    btn.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    expect(handlers.onPlayVod).toHaveBeenCalledWith(expect.objectContaining({
+      itemId: 'e1', resumeSecs: 450, episodeQueue: [expect.objectContaining({ itemId: 'e2' })],
+    }));
+
+    const remove = container.querySelector<HTMLElement>('[data-action="remove-resume"]')!;
+    remove.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    expect(storageMock.clearResume).toHaveBeenCalledWith('x1', 'episode', 'e1');
+  });
+
+  it('shows one Continue tile per series', async () => {
+    const owner = { kind: 'series', itemId: 's1' };
+    storageMock.getResumeList.mockReturnValue(['e2', 'e1'].map((itemId, i) => ({
+      accountId: 'x1', kind: 'episode', itemId, name: itemId, poster: '', ext: 'mp4',
+      position: 100, duration: 600, updatedAt: 2 - i, watchlistOwner: owner,
+    })));
+    await openWith();
+    expect(container.querySelector('[data-resume-episode="e2"]')).not.toBeNull();
+    expect(container.querySelector('[data-resume-episode="e1"]')).toBeNull();
   });
 
   it('restores the remaining episode queue from Continue Watching', async () => {

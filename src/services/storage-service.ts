@@ -199,6 +199,21 @@ function trimResume(
   return removed;
 }
 
+// Other episodes of the same series as `entry` (its older Continue entries).
+function seriesSiblings(
+  all: Record<string, ResumeEntry>,
+  entry: ResumeEntry,
+  keepKey: string,
+): ResumeEntry[] {
+  const owner = entry.kind === 'episode' ? entry.watchlistOwner?.itemId : undefined;
+  if (!owner) return [];
+  return Object.keys(all)
+    .filter(key => key !== keepKey)
+    .map(key => all[key])
+    .filter(other => other.accountId === entry.accountId && other.kind === 'episode'
+      && other.watchlistOwner?.itemId === owner);
+}
+
 // Without IndexedDB the localStorage map is the store, so an over-cap one
 // (saved before the cap existed) is trimmed and rewritten the first time it is read.
 function fallbackResume(): Record<string, ResumeEntry> {
@@ -1222,26 +1237,28 @@ export const StorageService = {
   },
   setResume(entry: ResumeEntry): void {
     const key = `${entry.accountId}|${entry.kind}|${entry.itemId}`;
-    const finished = entry.duration > 0 && entry.position >= entry.duration - CONFIG.XTREAM.RESUME_FINISH_PAD;
-    if (userData) {
-      if (finished || entry.position < CONFIG.XTREAM.RESUME_MIN_SECS) {
-        delete userData.resume[key];
-        persistUserChanges('playback-progress', [], [resumeKey(entry)]);
-      } else {
-        userData.resume[key] = cloneValue(entry);
-        const evicted = trimResume(userData.resume, entry, key);
-        persistUserChanges('playback-progress', [
-          record(resumeKey(entry), entry, { updatedAt: entry.updatedAt }),
-        ], evicted.map(resumeKey));
-      }
+    const all = userData ? userData.resume : fallbackResume();
+    const finished = !entry.nextUp && entry.duration > 0
+      && entry.position >= entry.duration - CONFIG.XTREAM.RESUME_FINISH_PAD;
+    const tooShort = !entry.nextUp && entry.position < CONFIG.XTREAM.RESUME_MIN_SECS;
+    // A queued next episode stays in Continue until real progress replaces it.
+    if (tooShort && !finished && all[key]?.nextUp) return;
+    if (finished || tooShort) {
+      delete all[key];
+      if (userData) persistUserChanges('playback-progress', [], [resumeKey(entry)]);
+      else set('resume', all);
       return;
     }
-    const all = fallbackResume();
-    if (finished || entry.position < CONFIG.XTREAM.RESUME_MIN_SECS) {
-      delete all[key];
-    } else {
-      all[key] = cloneValue(entry);
-      trimResume(all, entry, key);
+    // One Continue entry per series: the newest episode replaces the older ones.
+    const siblings = seriesSiblings(all, entry, key);
+    for (const sibling of siblings) delete all[`${sibling.accountId}|${sibling.kind}|${sibling.itemId}`];
+    all[key] = cloneValue(entry);
+    const evicted = trimResume(all, entry, key).concat(siblings);
+    if (userData) {
+      persistUserChanges('playback-progress', [
+        record(resumeKey(entry), entry, { updatedAt: entry.updatedAt }),
+      ], evicted.map(resumeKey));
+      return;
     }
     set('resume', all);
   },

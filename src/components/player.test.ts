@@ -1728,6 +1728,32 @@ describe('Player VOD mode', () => {
     player.stop();
   });
 
+  it('queues the next episode in Continue Watching when an episode ends', () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const video = document.createElement('video');
+    Object.defineProperty(video, 'duration', { value: 1800, configurable: true });
+    container.appendChild(video);
+    player.init(video);
+    const owner = { kind: 'series' as const, itemId: 's1' };
+    const next = {
+      url: 'http://host:8080/series/u/p/e2.mkv', title: 'Series — S1E2',
+      poster: '', accountId: 'x1', itemId: 'e2', kind: 'episode' as const, subtitles: [],
+      watchlistOwner: owner,
+    };
+    const later = { ...next, itemId: 'e3', url: 'http://host:8080/series/u/p/e3.mkv' };
+    player.playVod(req({ itemId: 'e1', kind: 'episode', episodeQueue: [next, later], watchlistOwner: owner }));
+    vi.mocked(StorageService.setResume).mockClear();
+
+    video.dispatchEvent(new Event('ended'));
+
+    expect(StorageService.setResume).toHaveBeenCalledWith(expect.objectContaining({
+      itemId: 'e2', kind: 'episode', position: 0, ext: 'mkv', nextUp: true,
+      watchlistOwner: owner, episodeQueue: [later],
+    }));
+  });
+
   it('counts down and starts the next movie from a Watchlist queue', async () => {
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
     HTMLMediaElement.prototype.pause = vi.fn();

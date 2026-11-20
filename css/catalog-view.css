@@ -288,6 +288,18 @@
   background: var(--bg-tertiary);
 }
 .catalog-progress-fill { height: 100%; background: var(--accent); }
+.catalog-next-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
 .catalog-remove-mark {
   position: absolute;
   top: 10px;

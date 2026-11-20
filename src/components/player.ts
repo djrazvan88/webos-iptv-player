@@ -787,15 +787,35 @@ export class Player {
     if (!v || !el) return;
     const dur = Number.isFinite(el.duration) ? el.duration : 0;
     if (dur <= 0) return; // metadata not loaded yet — currentTime is 0/unknown; don't clobber the stored point
+    const position = this.pendingSeekTarget ?? (el.currentTime || 0);
     StorageService.setResume({
       accountId: v.accountId, kind: v.kind, itemId: v.itemId,
       name: v.title, poster: v.poster, ext: extFromUrl(v.url),
-      position: this.pendingSeekTarget ?? (el.currentTime || 0),
+      position,
       duration: dur,
       updatedAt: Date.now(),
       episodeQueue: v.episodeQueue,
       watchlistOwner: v.watchlistOwner,
       categoryId: v.categoryId,
+    });
+    // Stopped in the end credits: the series continues with its next episode.
+    if (position >= dur - CONFIG.XTREAM.RESUME_FINISH_PAD) this.queueNextEpisode(v);
+  }
+
+  // Keeps a finished episode's series in Continue Watching, at the episode after it.
+  private queueNextEpisode(v: VodPlayback): void {
+    const next = v.kind === 'episode' ? v.episodeQueue?.[0] : undefined;
+    if (!next) return;
+    StorageService.setResume({
+      accountId: next.accountId, kind: 'episode', itemId: next.itemId,
+      name: next.title, poster: next.poster, ext: extFromUrl(next.url),
+      position: 0,
+      duration: 0,
+      updatedAt: Date.now(),
+      episodeQueue: v.episodeQueue!.slice(1),
+      watchlistOwner: next.watchlistOwner ?? v.watchlistOwner,
+      categoryId: next.categoryId ?? v.categoryId,
+      nextUp: true,
     });
   }
 
@@ -919,6 +939,7 @@ export class Player {
       const v = this.vod;
       this.vod = null; // before stop(), so it doesn't re-save a resume point for a finished movie
       StorageService.clearResume(v.accountId, v.kind, v.itemId);
+      this.queueNextEpisode(v);
       if (v.kind === 'vod') {
         StorageService.removeWatchlist(v.accountId, 'vod', v.itemId);
       } else if ((v.episodeQueue?.length ?? 0) === 0 && v.watchlistOwner) {

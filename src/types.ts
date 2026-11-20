@@ -613,6 +613,8 @@ export interface ResumeEntry {
   watchlistOwner?: WatchlistOwner;
   /** Catalog category at save time, so parental rules apply from the Continue rail. */
   categoryId?: string;
+  /** An episode not started yet, queued because the one before it finished. */
+  nextUp?: boolean;
 }
 
 // Structured metadata for online subtitle search (passed from Xtream catalog to player).

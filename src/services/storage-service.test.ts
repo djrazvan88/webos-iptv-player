@@ -794,6 +794,28 @@ describe('StorageService resume store', () => {
     expect(StorageService.getResume('x1', 'vod', '10')).toBeNull();
   });
 
+  it('keeps a queued next episode until real progress replaces it', () => {
+    const owner = { kind: 'series' as const, itemId: 's1' };
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'e2', position: 0, duration: 0, nextUp: true, watchlistOwner: owner }));
+    expect(StorageService.getResume('x1', 'episode', 'e2')?.nextUp).toBe(true);
+    // Leaving the next episode in its first seconds keeps it queued.
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'e2', position: 5, duration: 1500, watchlistOwner: owner }));
+    expect(StorageService.getResume('x1', 'episode', 'e2')?.nextUp).toBe(true);
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'e2', position: 300, duration: 1500, watchlistOwner: owner }));
+    expect(StorageService.getResume('x1', 'episode', 'e2')).toMatchObject({ position: 300 });
+    expect(StorageService.getResume('x1', 'episode', 'e2')?.nextUp).toBeUndefined();
+  });
+
+  it('keeps one Continue entry per series, the newest episode', () => {
+    const owner = { kind: 'series' as const, itemId: 's1' };
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'e1', watchlistOwner: owner, updatedAt: 1 }));
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'x9', watchlistOwner: { kind: 'series', itemId: 's2' }, updatedAt: 2 }));
+    StorageService.setResume(resume({ kind: 'episode', itemId: 'e2', watchlistOwner: owner, updatedAt: 3 }));
+    expect(StorageService.getResume('x1', 'episode', 'e1')).toBeNull();
+    expect(StorageService.getResume('x1', 'episode', 'e2')).not.toBeNull();
+    expect(StorageService.getResume('x1', 'episode', 'x9')).not.toBeNull();
+  });
+
   it('lists an account\'s entries newest first and clears on demand', () => {
     StorageService.setResume(resume({ itemId: '10', updatedAt: 1000 }));
     StorageService.setResume(resume({ itemId: '11', updatedAt: 2000 }));
