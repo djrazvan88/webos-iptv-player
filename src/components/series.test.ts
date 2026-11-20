@@ -707,6 +707,25 @@ describe('Series detail', () => {
     expect(container.querySelector('[data-resume-episode="e1"]')).toBeNull();
   });
 
+  it('opens the series from a Continue tile with Continue focused, without playing', async () => {
+    catalogMock.loadSeriesInfo.mockResolvedValue(SERIES_INFO);
+    storageMock.getResumeList.mockReturnValue([{
+      accountId: 'x1', kind: 'episode', itemId: 'e2', name: 'Series One — S2E1', poster: '', ext: 'mkv',
+      position: 300, duration: 1500, updatedAt: 1, watchlistOwner: { kind: 'series', itemId: 's1' },
+    }]);
+    const { view, handlers } = await openWith();
+    const tile = container.querySelector<HTMLElement>('.catalog-tile[data-resume-episode="e2"]')!;
+    tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    await vi.waitFor(() => expect(container.querySelector('[data-action="continue-series"]')).not.toBeNull());
+
+    expect(handlers.onPlayVod).not.toHaveBeenCalled();
+    expect(catalogMock.loadSeriesInfo).toHaveBeenCalledWith(expect.anything(), 's1', expect.anything());
+    expect(container.querySelector('.detail-title')?.textContent).toBe('Series One');
+    expect(container.querySelector('[data-episode-id]')).not.toBeNull();
+    expect(view.focusScope.focusKey).toBe(JSON.stringify(['detail', '', 'continue-series']));
+  });
+
   it('restores the remaining episode queue from Continue Watching', async () => {
     const next = {
       url: 'http://host:8080/series/u/p/e2.mkv', title: 'Series One — S2E1 — Episode Two',
@@ -720,9 +739,15 @@ describe('Series detail', () => {
         watchlistOwner: { kind: 'series', itemId: 's1' },
       },
     ]);
+    // Episode list unavailable: Continue falls back to the queue stored with the entry.
+    catalogMock.loadSeriesInfo.mockResolvedValue(null);
     const { view, handlers } = await openWith();
     const tile = container.querySelector('.catalog-tile[data-resume-episode="e1"]') as HTMLElement;
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('select');
+    await vi.waitFor(() => expect(container.querySelector('[data-action="continue-series"]')).not.toBeNull());
+    container.querySelector<HTMLElement>('[data-action="continue-series"]')!
+      .dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     view.handleAction('select');
     expect(handlers.onPlayVod).toHaveBeenCalledWith(expect.objectContaining({
       episodeQueue: [next],

@@ -128,7 +128,7 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     if (el.dataset.action === 'watchlist') { this.toggleWatchlist(); return true; }
     if (el.dataset.action === 'continue-series') { this.continueSeries(); return true; }
     if (el.dataset.action === 'remove-resume') { this.removeSeriesResume(); return true; }
-    if (el.dataset.resumeEpisode !== undefined) { this.playResume(el.dataset.resumeEpisode); return true; }
+    if (el.dataset.resumeEpisode !== undefined) { this.openResumeSeries(el.dataset.resumeEpisode); return true; }
     if (el.dataset.season !== undefined) { this.selectSeason(Number(el.dataset.season)); return true; }
     if (el.dataset.episodeId !== undefined) { this.playEpisode(el.dataset.episodeId); return true; }
     return false;
@@ -298,6 +298,24 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
   // A Continue-rail tile carries only the resume entry (episode id + composed
   // label + poster + stored container extension), not the owning series, so it
   // resumes the episode directly using the stored ext (falling back to mp4).
+  // A Continue tile opens its series (episode list, Continue button focused), so
+  // another episode can be picked without looking the series up again.
+  private openResumeSeries(episodeId: string): void {
+    const entry = this.resume.find((e) => e.itemId === episodeId);
+    const a = this.account;
+    const seriesId = entry?.watchlistOwner?.itemId;
+    if (!entry || !a || !seriesId) { this.playResume(episodeId); return; }
+    const series = this.findItem(entry.categoryId ?? '', seriesId) ?? {
+      accountId: a.id,
+      seriesId,
+      name: entry.name.split(' — ')[0],
+      poster: entry.poster,
+      rating: '',
+      categoryId: entry.categoryId ?? '',
+    };
+    void this.openDetail(series);
+  }
+
   private playResume(episodeId: string): void {
     const r = this.resume.find((e) => e.itemId === episodeId);
     if (r) this.playStoredResume(r);
