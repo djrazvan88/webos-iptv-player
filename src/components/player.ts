@@ -95,6 +95,8 @@ export class Player {
   // reset to Date.now() on every new catch-up session so the first checkpoint
   // fires CHECKPOINT_INTERVAL after tune-in, not immediately.
   private catchupCheckpointAt = 0;
+  // Wall-clock time of the last periodic movie/episode resume save.
+  private vodCheckpointAt = 0;
   // Position (seconds) saved from the video element before suspend() destroys it.
   // play() consumes this to restore the position on resume; -1 = not pending.
   private catchupSuspendPos = -1;
@@ -293,7 +295,10 @@ export class Player {
       if (status && this.liveSessionActive) this.livePlaybackStatus = status;
       this.onPlaybackStateChanged();
     };
-    onCurrent('pause', () => update('paused'));
+    onCurrent('pause', () => {
+      update('paused');
+      this.checkpointVod(el); // a paused TV is often switched off next
+    });
     onCurrent('volumechange', () => {
       if (this.liveSessionActive && !this.vod) this.rememberLiveAudio();
       update();
@@ -755,6 +760,7 @@ export class Player {
     if (!this.vodReconnecting) { this.vodReconnectCount = 0; this.vodReconnectFrom = 0; }
     this.vodReconnecting = false;
     this.vodStarted = false;
+    this.vodCheckpointAt = Date.now();
     log.info('playVod', v.title, '| resume', v.resumeSecs);
     this.saveCatchupProgress(); // save any active catch-up before switching to VOD
     this.currentChannel = null;
@@ -800,6 +806,17 @@ export class Player {
     });
     // Stopped in the end credits: the series continues with its next episode.
     if (position >= dur - CONFIG.XTREAM.RESUME_FINISH_PAD) this.queueNextEpisode(v);
+  }
+
+  // Saves the movie/episode resume point mid-playback, so closing the app from
+  // outside (TV off, an update) keeps it. Only once playback really started and
+  // past the resume minimum: a reconnect or a pending resume seek reads 0 here.
+  private checkpointVod(el: HTMLVideoElement): void {
+    if (!this.vod || !this.vodStarted || el !== this.videoEl || el.ended || el.seeking) return;
+    if (this.pendingResumeSecs > 0 || this.vodReconnecting) return;
+    if ((this.pendingSeekTarget ?? el.currentTime) < CONFIG.XTREAM.RESUME_MIN_SECS) return;
+    this.vodCheckpointAt = Date.now();
+    this.saveVodResume();
   }
 
   // Keeps a finished episode's series in Continue Watching, at the episode after it.
@@ -1503,6 +1520,9 @@ export class Player {
         this.catchupCheckpointAt = now;
         this.saveCatchupProgress();
       }
+    }
+    if (this.vod && !v.paused && Date.now() - this.vodCheckpointAt >= CONFIG.PLAYER.VOD_CHECKPOINT_MS) {
+      this.checkpointVod(v);
     }
     this.osd.refreshProgress();
   }

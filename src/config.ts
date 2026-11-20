@@ -46,6 +46,7 @@ export const CONFIG = {
   },
   PLAYER: {
     RESUME_DEFER_MS: 300,     // wait before re-tuning on visible: a relaunch that opens a channel supersedes it
+    VOD_CHECKPOINT_MS: 30 * 1000, // periodic save of the movie/episode resume point while it plays
     LIVE_PREVIEW_UPCOMING_COUNT: 4,
     LIVE_PREVIEW_REFRESH_MS: 1000,
     DEFAULT_PLAYER_OSD_TIMEOUT_MS: 5000,

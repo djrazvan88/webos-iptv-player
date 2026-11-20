@@ -6,8 +6,8 @@ android {
     applicationId 'org.frengineering.iptvtest'
     minSdk 22
     targetSdk 30
-    versionCode 12
-    versionName '1.19.7-fire'
+    versionCode 13
+    versionName '1.19.8-fire'
   }
   signingConfigs {
     test { storeFile rootProject.file('test.keystore'); storePassword 'frtest'; keyAlias 'fr'; keyPassword 'frtest' }

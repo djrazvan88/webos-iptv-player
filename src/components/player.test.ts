@@ -1252,6 +1252,61 @@ describe('Player VOD mode', () => {
   });
   afterEach(() => { container.remove(); vi.restoreAllMocks(); });
 
+  describe('periodic resume save', () => {
+    const startVod = () => {
+      HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+      HTMLMediaElement.prototype.pause = vi.fn();
+      HTMLMediaElement.prototype.load = vi.fn();
+      const v = document.createElement('video');
+      container.appendChild(v);
+      player.init(v);
+      player.playVod(req());
+      const el = container.querySelector('video') as HTMLVideoElement;
+      Object.defineProperty(el, 'duration', { configurable: true, value: 3600 });
+      Object.defineProperty(el, 'paused', { configurable: true, value: false });
+      vi.mocked(StorageService.setResume).mockClear();
+      return el;
+    };
+    const saved = () => vi.mocked(StorageService.setResume).mock.calls.map(([e]) => Math.round(e.position));
+
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('saves the playing position every VOD_CHECKPOINT_MS', () => {
+      const el = startVod();
+      el.dispatchEvent(new Event('playing'));
+      el.currentTime = 600;
+      el.dispatchEvent(new Event('timeupdate'));
+      expect(saved()).toEqual([]);
+      vi.advanceTimersByTime(CONFIG.PLAYER.VOD_CHECKPOINT_MS + 100);
+      el.currentTime = 630;
+      el.dispatchEvent(new Event('timeupdate'));
+      el.currentTime = 631;
+      el.dispatchEvent(new Event('timeupdate'));
+      expect(saved()).toEqual([630]);
+    });
+
+    it('saves when paused', () => {
+      const el = startVod();
+      el.dispatchEvent(new Event('playing'));
+      el.currentTime = 905;
+      el.dispatchEvent(new Event('pause'));
+      expect(saved()).toEqual([905]);
+    });
+
+    it('never saves before playback started or below the resume minimum', () => {
+      const el = startVod();
+      vi.advanceTimersByTime(CONFIG.PLAYER.VOD_CHECKPOINT_MS + 100);
+      el.currentTime = 600;
+      el.dispatchEvent(new Event('timeupdate'));
+      el.dispatchEvent(new Event('pause'));
+      el.dispatchEvent(new Event('playing'));
+      el.currentTime = 0;
+      el.dispatchEvent(new Event('pause'));
+      expect(saved()).toEqual([]);
+    });
+  });
+
   describe('reconnect after a cut-short file', () => {
     const startVod = (onBack = vi.fn()) => {
       HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
